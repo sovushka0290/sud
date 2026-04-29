@@ -237,7 +237,7 @@ export default function App() {
       if (!isEditingName) {
         const me = pList.find(p => p.id === guestId);
         if (me) {
-          setPlayerData(me);
+          setPlayerData(prev => JSON.stringify(prev) === JSON.stringify(me) ? prev : me);
         } else if (playerData && !me) {
           // If we were logged in but deleted
           setPlayerData(null);
@@ -255,20 +255,33 @@ export default function App() {
   const isAnsweringRef = useRef(false);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (phase === 'QUIZ' && playerData?.status === 'quiz' && quizTimer > 0) {
-      interval = setInterval(() => setQuizTimer(t => t - 1), 1000);
-    } else if (quizTimer === 0 && phase === 'QUIZ' && playerData?.status === 'quiz' && !isAnsweringRef.current) {
+    let interval: NodeJS.Timeout | null = null;
+    if (phase === 'QUIZ' && playerData?.status === 'quiz') {
+      interval = setInterval(() => {
+        setQuizTimer(t => {
+           if (t <= 1) {
+              if (interval) clearInterval(interval);
+              return 0;
+           }
+           return t - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+       if (interval) clearInterval(interval);
+    }
+  }, [phase, playerData?.status, quizStep]);
+
+  useEffect(() => {
+     if (quizTimer === 0 && phase === 'QUIZ' && playerData?.status === 'quiz' && !isAnsweringRef.current) {
       isAnsweringRef.current = true;
       if (playerData.status === 'quiz') {
-        setPlayerData(p => p ? { ...p, status: 'finished' } : p);
         handleQuizAnswer(-1).finally(() => {
           isAnsweringRef.current = false;
         });
       }
     }
-    return () => clearInterval(interval);
-  }, [phase, playerData?.status, quizTimer]);
+  }, [quizTimer, phase, playerData?.status]);
 
   // --- Handlers ---
 
@@ -423,13 +436,13 @@ export default function App() {
   if (isAdmin) return <AdminPanel players={players} phase={phase} onPhaseChange={setGlobalPhase} onCalculate={calculateResults} onReset={resetGame} lang={lang} setLang={setLang} />;
 
   if (!playerData && !isAdmin) return (
-    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] flex flex-col items-center justify-center p-6 relative font-sans text-white">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] flex flex-col items-center justify-center p-6 relative font-sans text-[#4B4B4B] dark:text-white">
       <ControlsToggle />
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl max-w-md w-full shadow-sm text-center">
         <div className="w-24 h-24 mx-auto bg-[#1CB0F6]/10 rounded-3xl rotate-12 flex items-center justify-center mb-6 border-4 border-[#1CB0F6]/20">
           <Scale className="w-12 h-12 text-[#1CB0F6] -rotate-12" />
         </div>
-        <h2 className="text-3xl font-black mb-2 text-white">{t.title}</h2>
+        <h2 className="text-3xl font-black mb-2 text-[#4B4B4B] dark:text-white">{t.title}</h2>
         <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm mb-8 uppercase tracking-widest">{t.regTitle}</p>
         
         <div className="space-y-4">
@@ -439,7 +452,7 @@ export default function App() {
             value={userNameInput} 
             onChange={(e) => setUserNameInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-4 text-white focus:border-[#1CB0F6] focus:bg-white dark:bg-[#2A2B35] outline-none transition-all placeholder:text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold text-lg"
+            className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-4 text-[#4B4B4B] dark:text-white focus:border-[#1CB0F6] focus:bg-white dark:bg-[#2A2B35] outline-none transition-all placeholder:text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold text-lg"
           />
           <button 
             disabled={!userNameInput.trim()}
@@ -454,7 +467,7 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-white p-4 md:p-8 flex flex-col items-center justify-center relative font-sans">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-[#4B4B4B] dark:text-white p-4 md:p-8 flex flex-col items-center justify-center relative font-sans">
       <ControlsToggle />
       <AnimatePresence mode="wait">
         {phase === 'IDLE' && (
@@ -479,7 +492,7 @@ export default function App() {
 
         {phase === 'PREFERENCES' && (
           <motion.div key="pref" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 rounded-3xl max-w-xl w-full shadow-sm">
-             <h3 className="text-2xl font-extrabold mb-2 text-center text-white">{t.chooseRoles}</h3>
+             <h3 className="text-2xl font-extrabold mb-2 text-center text-[#4B4B4B] dark:text-white">{t.chooseRoles}</h3>
              <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-center font-bold mb-8">{t.chooseSub}</p>
              
              <div className="grid gap-3 mb-8">
@@ -504,7 +517,7 @@ export default function App() {
                       <div className={`p-3 rounded-2xl ${isSelected ? 'bg-white dark:bg-[#2A2B35] shadow-sm' : 'bg-[#F7F9FC] dark:bg-[#181920]'} ${r.color.replace('text-', 'text-').replace('-500', '-500')}`}>
                          <r.icon size={28} style={{ color: isSelected ? '#1CB0F6' : '#8C8F9F' }} />
                       </div>
-                      <span className={`font-extrabold text-lg ${isSelected ? 'text-[#1CB0F6]' : 'text-white'}`}>{r.name[lang]}</span>
+                      <span className={`font-extrabold text-lg ${isSelected ? 'text-[#1CB0F6]' : 'text-[#4B4B4B] dark:text-white'}`}>{r.name[lang]}</span>
                    </div>
                    {isSelected && (
                      <div className="w-8 h-8 rounded-full bg-[#1CB0F6] text-white flex items-center justify-center font-black text-sm shadow-sm">
@@ -539,7 +552,7 @@ export default function App() {
             <div className="w-32 h-32 mx-auto bg-[#FFC800]/20 rounded-full flex items-center justify-center mb-6 relative">
               <Timer className="w-16 h-16 text-[#FFC800] animate-spin-slow absolute" />
             </div>
-            <h2 className="text-3xl font-extrabold text-white">{t.quizPrep}</h2>
+            <h2 className="text-3xl font-extrabold text-[#4B4B4B] dark:text-white">{t.quizPrep}</h2>
             <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-lg font-bold">{t.quizPrepSub}</p>
           </motion.div>
         )}
@@ -572,7 +585,7 @@ export default function App() {
                    </div>
                 </div>
                 
-                <h3 className="text-2xl md:text-3xl font-extrabold text-white mb-8 leading-relaxed">
+                <h3 className="text-2xl md:text-3xl font-extrabold text-[#4B4B4B] dark:text-white mb-8 leading-relaxed">
                   {QUESTIONS[quizStep].text[lang]}
                 </h3>
                 
@@ -581,7 +594,7 @@ export default function App() {
                     <button 
                       key={i} 
                       onClick={() => handleQuizAnswer(i)} 
-                      className="p-5 text-left bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:bg-[#181920] hover:border-[#1CB0F6] hover:text-[#1CB0F6] active:border-b-2 active:translate-y-[2px] rounded-2xl transition-all font-extrabold text-lg text-white"
+                      className="p-5 text-left bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:bg-[#181920] hover:border-[#1CB0F6] hover:text-[#1CB0F6] active:border-b-2 active:translate-y-[2px] rounded-2xl transition-all font-extrabold text-lg text-[#4B4B4B] dark:text-white"
                     >
                       {opt}
                     </button>
@@ -612,14 +625,14 @@ export default function App() {
              
              <div>
                 <h2 className="text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase tracking-widest text-sm mb-2">{t.assignedRoleLabel}</h2>
-                <h3 className="text-4xl font-black text-white">
+                <h3 className="text-4xl font-black text-[#4B4B4B] dark:text-white">
                   {ROLES.find(r => r.id === playerData.assignedRole)?.name[lang]}
                 </h3>
              </div>
              
              <div className="bg-[#FFC800]/10 p-6 rounded-2xl border-2 border-[#FFC800]/30 flex flex-col items-center gap-2">
                 <Trophy className="w-10 h-10 text-[#FFC800]" />
-                <p className="text-white font-extrabold text-xl">{t.scoreLabel} <span className="text-[#FFC800]">{playerData.score} / 5</span></p>
+                <p className="text-[#4B4B4B] dark:text-white font-extrabold text-xl">{t.scoreLabel} <span className="text-[#FFC800]">{playerData.score} / 5</span></p>
                 <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-sm font-bold uppercase">{t.qualConfirmed}</p>
              </div>
           </motion.div>
@@ -632,7 +645,7 @@ export default function App() {
 function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang, setLang }: any) {
   const t = TRANSLATIONS[lang];
   return (
-    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-white flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-[#4B4B4B] dark:text-white flex flex-col font-sans">
       <header className="p-4 md:p-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B] flex justify-between items-center bg-white dark:bg-[#2A2B35] sticky top-0 z-20 shadow-sm flex-col md:flex-row gap-4">
         <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-4">
@@ -640,7 +653,7 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
               <Settings className="text-[#1CB0F6]" size={28} />
             </div>
             <div>
-              <h1 className="font-black uppercase tracking-widest text-white">{t.adminTitle}</h1>
+              <h1 className="font-black uppercase tracking-widest text-[#4B4B4B] dark:text-white">{t.adminTitle}</h1>
               <p className="text-[10px] text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-bold tracking-tighter">{t.adminSub}</p>
             </div>
           </div>
@@ -672,9 +685,9 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
         {/* Players List */}
         <section className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 shadow-sm h-fit">
            <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B]">
-             <h3 className="text-xl font-black uppercase text-white flex items-center gap-3">
+             <h3 className="text-xl font-black uppercase text-[#4B4B4B] dark:text-white flex items-center gap-3">
                <Users size={24} className="text-[#1CB0F6]" />
-               {t.connectedPlayers} <span className="bg-[#E5E5E5] dark:bg-[#393A4B] text-white px-3 py-1 rounded-xl text-sm">{players.length}</span>
+               {t.connectedPlayers} <span className="bg-[#E5E5E5] dark:bg-[#393A4B] text-[#4B4B4B] dark:text-white px-3 py-1 rounded-xl text-sm">{players.length}</span>
              </h3>
            </div>
            
@@ -686,7 +699,7 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
                       {idx + 1}
                     </div>
                     <div>
-                      <p className="font-bold text-lg leading-none mb-2 text-white">{p.name}</p>
+                      <p className="font-bold text-lg leading-none mb-2 text-[#4B4B4B] dark:text-white">{p.name}</p>
                       <div className="flex gap-2">
                          {p.choices.map((c: string, i: number) => (
                             <span key={i} className="text-[10px] bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] px-2 py-1 rounded-lg text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-black">{ROLES.find(r => r.id === c)?.id}</span>
