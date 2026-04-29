@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, collection, setDoc, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -44,6 +44,7 @@ type Player = {
   timeTaken: number;
   assignedRole: string | null;
   status: 'waiting' | 'quiz' | 'finished';
+  quizStep?: number;
 };
 
 type GamePhase = 'IDLE' | 'PREFERENCES' | 'LOBBY' | 'QUIZ' | 'RESULTS';
@@ -56,48 +57,33 @@ const ROLES: Role[] = [
   { id: 'witness', name: { kz: 'Куәгер', ru: 'Свидетель' }, limit: 99, icon: Users, color: 'text-amber-500' },
 ];
 
-const QUESTIONS = [
-  {
-    text: { kz: 'ҚР-да сот билігін кім жүзеге асырады?', ru: 'Кто осуществляет судебную власть в РК?' },
-    options: {
-      kz: ['Прокуратура', 'Тек соттар', 'Ішкі істер органдары', 'Парламент'],
-      ru: ['Прокуратура', 'Только суды', 'Органы внутренних дел', 'Парламент']
-    },
-    correct: 1
-  },
-  {
-    text: { kz: 'Сот залына судья кіргенде айтылатын міндетті сөз?', ru: 'Обязательные слова при входе судьи в зал заседаний?' },
-    options: {
-      kz: ['"Тұрыңыздар, сот келеді!"', '"Тыныштық сақтаңыздар!"', '"Назар аударыңыздар!"', '"Сот басталды!"'],
-      ru: ['"Встать, суд идет!"', '"Прошу соблюдать тишину!"', '"Внимание!"', '"Суд начался!"']
-    },
-    correct: 0
-  },
-  {
-    text: { kz: 'Кінәсіздік презумпциясы бойынша адамның кінәсін кім дәлелдеуі тиіс?', ru: 'Кто должен доказывать виновность лица согласно презумпции невиновности?' },
-    options: {
-      kz: ['Адвокат', 'Айыптаушы (Прокурор)', 'Судья', 'Сотталушы өзі'],
-      ru: ['Адвокат', 'Обвинитель (Прокурор)', 'Судья', 'Сам подсудимый']
-    },
-    correct: 1
-  },
-  {
-    text: { kz: 'Сот мәжілісінің хаттамасын кім жүргізеді?', ru: 'Кто ведет протокол судебного заседания?' },
-    options: {
-      kz: ['Судья', 'Хатшы', 'Адвокат', 'Пристав'],
-      ru: ['Судья', 'Секретарь', 'Адвокат', 'Пристав']
-    },
-    correct: 1
-  },
-  {
-    text: { kz: 'ҚР Конституциясына сәйкес сот шешімі кімнің атынан шығарылады?', ru: 'От чьего имени выносится судебное решение согласно Конституции РК?' },
-    options: {
-      kz: ['Судьяның атынан', 'Мемлекет атынан (Қазақстан Республикасының)', 'Халық атынан', 'Заң атынан'],
-      ru: ['От имени судьи', 'От имени государства (Республики Казахстан)', 'От имени народа', 'От имени закона']
-    },
-    correct: 1
-  }
-];
+const ROLE_QUESTIONS: Record<string, any[]> = {
+  judge: [
+    { text: { kz: "Судьяның негізгі міндеті?", ru: "Главная обязанность судьи?" }, options: { kz: ["Шешім шығару", "Айыптау", "Қорғау", "Жазу"], ru: ["Выносить решения", "Обвинять", "Защищать", "Писать"] }, correct: 0 },
+    { text: { kz: "Судья кімге бағынады?", ru: "Кому подчиняется судья?" }, options: { kz: ["Заңға", "Президентке", "Халыққа", "Ешкімге"], ru: ["Закону", "Президенту", "Народу", "Никому"] }, correct: 0 },
+    { text: { kz: "Сот отырысын кім басқарады?", ru: "Кто ведет судебное заседание?" }, options: { kz: ["Судья", "Хатшы", "Адвокат", "Прокурор"], ru: ["Судья", "Секретарь", "Адвокат", "Прокурор"] }, correct: 0 }
+  ],
+  lawyer: [
+    { text: { kz: "Адвокаттың қызметі?", ru: "Функция адвоката?" }, options: { kz: ["Қорғау", "Айыптау", "Соттау", "Қарау"], ru: ["Защита", "Обвинение", "Судить", "Смотреть"] }, correct: 0 },
+    { text: { kz: "Адвокаттық құпия не?", ru: "Что такое адвокатская тайна?" }, options: { kz: ["Ақпаратты жарияламау", "Өтірік айту", "Ақша жасыру", "Дәлелдерді жою"], ru: ["Неразглашение информации", "Врать", "Прятать деньги", "Уничтожать улики"] }, correct: 0 },
+    { text: { kz: "Кім адвокат бола алады?", ru: "Кто может быть адвокатом?" }, options: { kz: ["Лицензиясы бар заңгер", "Кез келген адам", "Прокурор", "Студент"], ru: ["Юрист с лицензией", "Любой человек", "Прокурор", "Студент"] }, correct: 0 }
+  ],
+  prosecutor: [
+    { text: { kz: "Прокурордың рөлі?", ru: "Роль прокурора?" }, options: { kz: ["Мемлекеттік айыптауды қолдау", "Қорғау", "Соттау", "Кешірім жасау"], ru: ["Поддержание гособвинения", "Защита", "Судить", "Помилование"] }, correct: 0 },
+    { text: { kz: "Прокурор қадағалайды:", ru: "Прокурор надзирает за:" }, options: { kz: ["Заңдылықты", "Тазалықты", "Моральды", "Ауа райын"], ru: ["Законностью", "Чистотой", "Моралью", "Погодой"] }, correct: 0 },
+    { text: { kz: "Прокурор қатыспайды:", ru: "Прокурор не участвует в:" }, options: { kz: ["Үкім шығаруға", "Дәлелдеуге", "Тергеуге", "Сотқа"], ru: ["Вынесении приговора", "Доказывании", "Следствии", "Суде"] }, correct: 0 }
+  ],
+  secretary: [
+    { text: { kz: "Хатшы не істейді?", ru: "Что делает секретарь?" }, options: { kz: ["Хаттама жазады", "Үкім шығарады", "Қорғайды", "Сұрақ қояды"], ru: ["Пишет протокол", "Выносит приговор", "Защищает", "Задает вопросы"] }, correct: 0 },
+    { text: { kz: "Сот хатшысына қойылатын талап?", ru: "Требование к секретарю суда?" }, options: { kz: ["Мұқияттылық / жылдамдық", "Күш", "Байлық", "Әртістік"], ru: ["Внимательность / скорость", "Сила", "Богатство", "Артистизм"] }, correct: 0 },
+    { text: { kz: "Сот отырысының хаттамасы - бұл?", ru: "Протокол судебного заседания - это?" }, options: { kz: ["Ресми құжат", "Қаралама", "Газет мақаласы", "Эссе"], ru: ["Официальный документ", "Черновик", "Газетная статья", "Эссе"] }, correct: 0 }
+  ],
+  witness: [
+    { text: { kz: "Куәгердің міндеті?", ru: "Обязанность свидетеля?" }, options: { kz: ["Шындықты айту", "Үндемеу", "Пікір айту", "Сұрақ қою"], ru: ["Говорить правду", "Молчать", "Высказывать мнение", "Задавать вопросы"] }, correct: 0 },
+    { text: { kz: "Жалған жауап бергені үшін?", ru: "За дачу ложных показаний?" }, options: { kz: ["Қылмыстық жауапкершілік", "Сыйлық", "Ескерту", "Ештеңе жоқ"], ru: ["Уголовная ответственность", "Подарок", "Предупреждение", "Ничего"] }, correct: 0 },
+    { text: { kz: "Дәйектемені бекітетін кім?", ru: "Кто дает клятву?" }, options: { kz: ["Куәгер", "Судья", "Көрермен", "Адвокат"], ru: ["Свидетель", "Судья", "Зритель", "Адвокат"] }, correct: 0 }
+  ]
+};;
 
 const TRANSLATIONS: Record<string, any> = {
   kz: {
@@ -172,6 +158,9 @@ export default function App() {
   const [lang, setLang] = useState<'kz' | 'ru'>('kz');
   const t = TRANSLATIONS[lang];
 
+  
+
+
   const [isEditingName, setIsEditingName] = useState(false);
   const [guestId] = useState(() => {
     const key = 'court_game_player_id';
@@ -184,6 +173,10 @@ export default function App() {
   });
 
   const [playerData, setPlayerData] = useState<Player | null>(null);
+  const myQuestions = useMemo(() => {
+    if (!playerData || playerData.choices.length === 0) return [];
+    return playerData.choices.flatMap(roleId => ROLE_QUESTIONS[roleId] || []);
+  }, [playerData?.choices]);
   const [phase, setPhase] = useState<GamePhase>('IDLE');
   const [players, setPlayers] = useState<Player[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -300,7 +293,8 @@ export default function App() {
       score: 0,
       timeTaken: 0,
       assignedRole: null,
-      status: 'waiting'
+      status: 'waiting',
+      quizStep: 0
     };
 
     try {
@@ -331,25 +325,31 @@ export default function App() {
     setQuizTimer(10);
     setQuizStartTime(Date.now());
     try {
-      await updateDoc(doc(db, 'players', guestId), { status: 'quiz' });
+      await updateDoc(doc(db, 'players', guestId), { status: 'quiz', quizStep: 0, score: 0 });
     } catch (e) {
       console.error("Start quiz failed", e);
     }
   };
 
   const handleQuizAnswer = async (index: number) => {
-    const correct = index === QUESTIONS[quizStep].correct;
+    if (myQuestions.length === 0) return;
+    const currentQ = myQuestions[quizStep];
+    const correct = index === currentQ?.correct;
     const finalScore = quizScore + (correct ? 1 : 0);
     
-    if (quizStep < QUESTIONS.length - 1) {
+    if (quizStep < myQuestions.length - 1) {
       setQuizScore(finalScore);
       setQuizStep(s => s + 1);
       setQuizTimer(10);
+      try {
+        await updateDoc(doc(db, 'players', guestId), { quizStep: quizStep + 1, score: finalScore });
+      } catch(e){}
     } else {
       const totalTime = Date.now() - quizStartTime;
       try {
         await updateDoc(doc(db, 'players', guestId), {
           status: 'finished',
+          quizStep: quizStep + 1,
           score: finalScore,
           timeTaken: totalTime
         });
@@ -554,6 +554,28 @@ export default function App() {
             </div>
             <h2 className="text-3xl font-extrabold text-[#4B4B4B] dark:text-white">{t.quizPrep}</h2>
             <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-lg font-bold">{t.quizPrepSub}</p>
+            
+            <div className="mt-8 space-y-4 w-full">
+              <h3 className="font-extrabold text-sm text-[#AFAFAF] uppercase tracking-wider">{lang === 'kz' ? 'Бәсекелестер (Конкуренттер)' : 'Конкуренты'}</h3>
+              {playerData.choices.map((roleId: string) => {
+                 const roleInfo = ROLES.find(r => r.id === roleId);
+                 const competitors = players.filter(p => p.id !== guestId && p.choices.includes(roleId));
+                 return (
+                    <div key={roleId} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl p-4 text-left shadow-sm">
+                      <span className="font-extrabold text-[#4B4B4B] dark:text-white block mb-3 text-sm">{roleInfo?.name[lang]}</span>
+                      <div className="flex flex-wrap gap-2">
+                        {competitors.length > 0 ? competitors.map(c => (
+                          <span key={c.id} className="inline-flex items-center bg-[#F7F9FC] dark:bg-[#181920] px-3 py-1.5 rounded-xl text-xs font-bold text-[#AFAFAF] border border-[#E5E5E5] dark:border-[#393A4B]">
+                            {c.name}
+                          </span>
+                        )) : (
+                          <span className="text-xs font-bold text-[#AFAFAF] italic">{lang === 'kz' ? 'Қарсыластар жоқ' : 'Нет конкурентов'}</span>
+                        )}
+                      </div>
+                    </div>
+                 );
+              })}
+            </div>
           </motion.div>
         )}
 
@@ -568,7 +590,8 @@ export default function App() {
                  <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-lg leading-relaxed">{t.quizFinishedSub}</p>
               </div>
             ) : playerData.status === 'quiz' ? (
-              <div className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-10 rounded-3xl shadow-sm relative overflow-hidden">
+              <>
+                <div className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-10 rounded-3xl shadow-sm relative overflow-hidden">
                 <div className="w-full bg-[#E5E5E5] dark:bg-[#393A4B] h-4 rounded-full mb-8 overflow-hidden">
                    <div 
                      className="h-full bg-[#FF4B4B] rounded-full transition-all duration-1000 ease-linear flex items-center justify-end px-2 text-[10px] font-extrabold text-white"
@@ -578,7 +601,7 @@ export default function App() {
                 
                 <div className="flex justify-between items-center mb-8">
                    <span className="font-extrabold text-[#AFAFAF] dark:text-[#8C8F9F] text-lg">
-                      <span className="text-[#1CB0F6]">{quizStep + 1}</span> / {QUESTIONS.length}
+                      <span className="text-[#1CB0F6]">{quizStep + 1}</span> / {myQuestions.length}
                    </span>
                    <div className="text-3xl font-black text-[#FF4B4B] tabular-nums flex items-center gap-2">
                      <Timer className="w-8 h-8" /> {quizTimer}s
@@ -586,11 +609,11 @@ export default function App() {
                 </div>
                 
                 <h3 className="text-2xl md:text-3xl font-extrabold text-[#4B4B4B] dark:text-white mb-8 leading-relaxed">
-                  {QUESTIONS[quizStep].text[lang]}
+                  {myQuestions[quizStep].text[lang]}
                 </h3>
                 
                 <div className="grid gap-4">
-                  {QUESTIONS[quizStep].options[lang].map((opt, i) => (
+                  {myQuestions[quizStep].options[lang].map((opt, i) => (
                     <button 
                       key={i} 
                       onClick={() => handleQuizAnswer(i)} 
@@ -601,6 +624,35 @@ export default function App() {
                   ))}
                 </div>
               </div>
+                
+                <div className="mt-6 bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-5 rounded-3xl shadow-sm text-left">
+                   <div className="font-extrabold text-xs text-[#AFAFAF] mb-4 uppercase tracking-wider flex justify-between items-center">
+                      <span>{lang === 'kz' ? 'Бәсекелестердің прогрессі:' : 'Прогресс конкурентов:'}</span>
+                      <span className="text-[#1CB0F6]">{ROLES.find(r => r.id === playerData.choices[Math.floor(quizStep / 3)] || playerData.choices[0])?.name[lang]}</span>
+                   </div>
+                   <div className="space-y-4">
+                     {(() => {
+                        const currentRoleId = playerData.choices[Math.floor(quizStep / 3)] || playerData.choices[0];
+                        const competitors = players.filter(p => p.id !== guestId && p.choices.includes(currentRoleId));
+                        if (competitors.length === 0) return <div className="text-sm font-bold text-[#AFAFAF] animate-pulse">{lang === 'kz' ? 'Қарсыластар жоқ' : 'Нет конкурентов'}</div>;
+                        return competitors.map(c => {
+                          const theirPct = c.status === 'finished' ? 100 : Math.round(((c.quizStep || 0) / 9) * 100);
+                          return (
+                            <div key={c.id} className="flex items-center gap-4">
+                              <span className="text-sm font-extrabold w-20 truncate text-[#4B4B4B] dark:text-white">{c.name}</span>
+                              <div className="flex-1 bg-[#F7F9FC] dark:bg-[#181920] h-3 rounded-full overflow-hidden border border-[#E5E5E5] dark:border-[#393A4B]">
+                                 <div className="bg-[#1CB0F6] h-full rounded-full transition-all duration-500 relative overflow-hidden" style={{ width: `${theirPct}%` }}>
+                                    <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]"></div>
+                                 </div>
+                              </div>
+                              <span className="text-xs font-bold text-[#AFAFAF] w-8 text-right">{theirPct}%</span>
+                            </div>
+                          );
+                        });
+                     })()}
+                   </div>
+                </div>
+              </>
             ) : (
               <div className="text-center pt-20">
                  <button 

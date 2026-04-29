@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 @theme {
   --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
 }
@@ -15,4 +17,9 @@ body {
 html.dark body {
   background-color: #181920;
   color: #ffffff;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
