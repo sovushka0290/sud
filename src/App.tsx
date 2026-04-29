@@ -168,6 +168,7 @@ export default function App() {
   const [lang, setLang] = useState<'kz' | 'ru'>('kz');
   const t = TRANSLATIONS[lang];
 
+  const [isEditingName, setIsEditingName] = useState(false);
   const [guestId] = useState(() => {
     const key = 'court_game_player_id';
     let id = localStorage.getItem(key);
@@ -216,8 +217,8 @@ export default function App() {
           }
         }
 
-        // Poll Player Specific Data (if not admin)
-        if (!isAdmin && isMounted) {
+        // Poll Player Specific Data (if not admin and not currently editing name)
+        if (!isAdmin && isMounted && !isEditingName) {
           const playerRes = await fetch(`/api/players/${guestId}`, { cache: 'no-store' });
           if (playerRes.ok) {
             const playerDataRaw = await playerRes.json();
@@ -242,7 +243,7 @@ export default function App() {
       isMounted = false;
       clearTimeout(timeoutId);
     };
-  }, [guestId, isAdmin]);
+  }, [guestId, isAdmin, isEditingName]);
 
   // Quiz Timer Logic
   useEffect(() => {
@@ -276,7 +277,8 @@ export default function App() {
     };
 
     try {
-      setPlayerData(newPlayerData); // Set locally first for instant feedback
+      setPlayerData(newPlayerData);
+      setIsEditingName(false); // Finished editing
       await fetch(`/api/players/${guestId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -417,6 +419,16 @@ export default function App() {
             <BrainCircuit className="w-20 h-20 text-blue-500 mx-auto animate-pulse" />
             <h2 className="text-3xl font-black uppercase italic">{t.welcome}, {playerData.name}!</h2>
             <p className="text-gray-400 max-w-sm mx-auto">{t.waitText}</p>
+            <button 
+              onClick={() => {
+                setPlayerData(null);
+                setUserNameInput(playerData.name);
+                setIsEditingName(true);
+              }}
+              className="mt-4 px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-500 uppercase transition-all"
+            >
+              {lang === 'kz' ? 'Атты өзгерту' : 'Изменить имя'}
+            </button>
           </motion.div>
         )}
 
