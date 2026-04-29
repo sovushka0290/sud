@@ -196,37 +196,49 @@ export default function App() {
   // --- API Sync (Polling) ---
 
   useEffect(() => {
+    let isMounted = true;
     const pollState = async () => {
       try {
-        const res = await fetch('/api/state');
+        const res = await fetch('/api/state', { cache: 'no-store' });
+        if (!res.ok) throw new Error('API down');
         const data = await res.json();
-        setPhase(data.phase);
-        setPlayers(data.players);
+        if (isMounted) {
+          setPhase(data.phase);
+          setPlayers(data.players);
+        }
       } catch (e) {
         console.error("Polling error", e);
       }
     };
 
     pollState();
-    const interval = setInterval(pollState, 1500);
-    return () => clearInterval(interval);
+    const interval = setInterval(pollState, 2000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
     if (!isAdmin) {
+      let isMounted = true;
       const pollPlayerData = async () => {
         try {
-          const res = await fetch(`/api/players/${guestId}`);
+          const res = await fetch(`/api/players/${guestId}`, { cache: 'no-store' });
+          if (!res.ok) throw new Error('API down');
           const data = await res.json();
-          setPlayerData(data);
+          if (isMounted) setPlayerData(data);
         } catch (e) {
           console.error("Player polling error", e);
         }
       };
 
       pollPlayerData();
-      const interval = setInterval(pollPlayerData, 1500);
-      return () => clearInterval(interval);
+      const interval = setInterval(pollPlayerData, 2000);
+      return () => {
+        isMounted = false;
+        clearInterval(interval);
+      };
     }
   }, [guestId, isAdmin]);
 
