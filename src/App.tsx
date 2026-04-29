@@ -347,16 +347,16 @@ export default function App() {
   };
 
   const LanguageToggle = () => (
-    <div className="fixed top-6 left-6 z-50 flex gap-2">
+    <div className="fixed top-6 right-6 md:right-10 z-50 flex gap-2">
       <button 
         onClick={() => setLang('kz')}
-        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${lang === 'kz' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-500 hover:bg-white/10'}`}
+        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'kz' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
       >
         ҚАЗ
       </button>
       <button 
         onClick={() => setLang('ru')}
-        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${lang === 'ru' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-500 hover:bg-white/10'}`}
+        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'ru' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
       >
         РУС
       </button>
@@ -387,12 +387,14 @@ export default function App() {
   if (isAdmin) return <AdminPanel players={players} phase={phase} onPhaseChange={setGlobalPhase} onCalculate={calculateResults} onReset={resetGame} lang={lang} setLang={setLang} />;
 
   if (!playerData && !isAdmin) return (
-    <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center p-6 relative">
+    <div className="min-h-screen bg-[#F7F9FC] flex flex-col items-center justify-center p-6 relative font-sans text-[#4B4B4B]">
       <LanguageToggle />
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white/5 border border-white/10 p-8 rounded-3xl max-w-md w-full backdrop-blur-xl">
-        <Scale className="w-12 h-12 text-blue-500 mb-6 mx-auto" />
-        <h2 className="text-2xl font-bold text-center mb-2 uppercase tracking-widest">{t.title}</h2>
-        <p className="text-gray-500 text-center text-xs mb-8 uppercase tracking-tighter">{t.regTitle}</p>
+      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white border-2 border-[#E5E5E5] p-8 rounded-3xl max-w-md w-full shadow-sm text-center">
+        <div className="w-24 h-24 mx-auto bg-[#1CB0F6]/10 rounded-3xl rotate-12 flex items-center justify-center mb-6 border-4 border-[#1CB0F6]/20">
+          <Scale className="w-12 h-12 text-[#1CB0F6] -rotate-12" />
+        </div>
+        <h2 className="text-3xl font-black mb-2 text-[#4B4B4B]">{t.title}</h2>
+        <p className="text-[#AFAFAF] font-bold text-sm mb-8 uppercase tracking-widest">{t.regTitle}</p>
         
         <div className="space-y-4">
           <input 
@@ -400,10 +402,15 @@ export default function App() {
             placeholder={t.namePlaceholder}
             value={userNameInput} 
             onChange={(e) => setUserNameInput(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:border-blue-500 outline-none transition-all placeholder:text-gray-600 font-bold"
+            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+            className="w-full bg-[#F7F9FC] border-2 border-[#E5E5E5] rounded-2xl px-6 py-4 text-[#4B4B4B] focus:border-[#1CB0F6] focus:bg-white outline-none transition-all placeholder:text-[#AFAFAF] font-extrabold text-lg"
           />
-          <button onClick={handleLogin} className="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95">
-            <LogIn size={20} /> {t.loginBtn}
+          <button 
+            disabled={!userNameInput.trim()}
+            onClick={handleLogin} 
+            className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] disabled:border-[#E5E5E5] disabled:text-[#AFAFAF] border-b-4 active:border-b-0 disabled:active:border-b-4 disabled:active:translate-y-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-lg flex items-center justify-center gap-2 transition-all uppercase"
+          >
+            {t.loginBtn}
           </button>
         </div>
       </motion.div>
@@ -411,21 +418,23 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] text-white p-4 md:p-8 flex items-center justify-center relative">
+    <div className="min-h-screen bg-[#F7F9FC] text-[#4B4B4B] p-4 md:p-8 flex flex-col items-center justify-center relative font-sans">
       <LanguageToggle />
       <AnimatePresence mode="wait">
         {phase === 'IDLE' && (
-          <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center space-y-6">
-            <BrainCircuit className="w-20 h-20 text-blue-500 mx-auto animate-pulse" />
-            <h2 className="text-3xl font-black uppercase italic">{t.welcome}, {playerData.name}!</h2>
-            <p className="text-gray-400 max-w-sm mx-auto">{t.waitText}</p>
+          <motion.div key="idle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="text-center space-y-6 w-full max-w-sm">
+            <div className="w-32 h-32 mx-auto bg-blue-100 rounded-full flex items-center justify-center animate-bounce">
+              <BrainCircuit className="w-16 h-16 text-[#1CB0F6]" />
+            </div>
+            <h2 className="text-3xl font-extrabold">{t.welcome},<br/><span className="text-[#1CB0F6]">{playerData.name}!</span></h2>
+            <p className="text-[#AFAFAF] font-bold text-lg">{t.waitText}</p>
             <button 
               onClick={() => {
                 setPlayerData(null);
                 setUserNameInput(playerData.name);
                 setIsEditingName(true);
               }}
-              className="mt-4 px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-500 uppercase transition-all"
+              className="mt-6 w-full px-6 py-4 bg-white hover:bg-gray-50 border-2 border-[#E5E5E5] hover:border-gray-300 border-b-4 active:border-b-2 active:translate-y-[2px] rounded-2xl text-[#AFB0B6] font-extrabold uppercase transition-all"
             >
               {lang === 'kz' ? 'Атты өзгерту' : 'Изменить имя'}
             </button>
@@ -433,46 +442,55 @@ export default function App() {
         )}
 
         {phase === 'PREFERENCES' && (
-          <motion.div key="pref" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white/5 border border-white/10 p-8 rounded-3xl max-w-xl w-full backdrop-blur-xl">
-             <h3 className="text-2xl font-bold mb-2 uppercase italic tracking-tighter">{t.chooseRoles}</h3>
-             <p className="text-gray-500 text-sm mb-8">{t.chooseSub}</p>
+          <motion.div key="pref" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white border-2 border-[#E5E5E5] p-6 md:p-8 rounded-3xl max-w-xl w-full shadow-sm">
+             <h3 className="text-2xl font-extrabold mb-2 text-center text-[#4B4B4B]">{t.chooseRoles}</h3>
+             <p className="text-[#AFAFAF] text-center font-bold mb-8">{t.chooseSub}</p>
              
              <div className="grid gap-3 mb-8">
-               {ROLES.map(r => (
+               {ROLES.map(r => {
+                 const isSelected = selectedChoices.includes(r.id);
+                 return (
                  <button 
                   key={r.id}
                   disabled={playerData.choices.length > 0}
                   onClick={() => {
-                    if (selectedChoices.includes(r.id)) setSelectedChoices(selectedChoices.filter(id => id !== r.id));
+                    if (isSelected) setSelectedChoices(selectedChoices.filter(id => id !== r.id));
                     else if (selectedChoices.length < 3) setSelectedChoices([...selectedChoices, r.id]);
                   }}
-                  className={`p-4 rounded-2xl border transition-all flex items-center justify-between group ${selectedChoices.includes(r.id) ? 'bg-blue-600/20 border-blue-500/50' : 'bg-white/5 border-white/5 hover:border-white/20'}`}
+                  className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between group
+                    ${isSelected 
+                      ? 'bg-[#DDF4FF] border-[#1CB0F6] border-b-4 active:border-b-2 active:translate-y-[2px]' 
+                      : 'bg-white border-[#E5E5E5] border-b-4 hover:bg-[#F7F9FC] active:border-b-2 active:translate-y-[2px]'}
+                    ${playerData.choices.length > 0 ? 'opacity-70 pointer-events-none border-b-2 translate-y-[2px]' : ''}
+                  `}
                  >
                    <div className="flex items-center gap-4">
-                      <div className={`p-2 rounded-lg bg-white/5 ${r.color}`}>
-                        <r.icon size={24} />
+                      <div className={`p-3 rounded-2xl ${isSelected ? 'bg-white shadow-sm' : 'bg-[#F7F9FC]'} ${r.color.replace('text-', 'text-').replace('-500', '-500')}`}>
+                         <r.icon size={28} style={{ color: isSelected ? '#1CB0F6' : '#AFAFAF' }} />
                       </div>
-                      <span className="font-bold tracking-tight">{r.name[lang]}</span>
+                      <span className={`font-extrabold text-lg ${isSelected ? 'text-[#1CB0F6]' : 'text-[#4B4B4B]'}`}>{r.name[lang]}</span>
                    </div>
-                   {selectedChoices.includes(r.id) && (
-                     <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-black text-xs">
+                   {isSelected && (
+                     <div className="w-8 h-8 rounded-full bg-[#1CB0F6] text-white flex items-center justify-center font-black text-sm shadow-sm">
                         {selectedChoices.indexOf(r.id) + 1}
                      </div>
                    )}
                  </button>
-               ))}
+               )})}
              </div>
 
              {playerData.choices.length > 0 ? (
-               <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-center">
-                  <p className="text-emerald-400 font-bold uppercase tracking-widest text-sm">✓ {t.choiceAccepted}</p>
-                  <span className="text-[10px] text-gray-500 block mt-1">{t.dontLookAway}</span>
+               <div className="p-6 bg-[#58CC02]/10 border-2 border-[#58CC02]/30 rounded-2xl text-center">
+                  <p className="text-[#58CC02] font-extrabold text-lg mb-1 flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-6 h-6" /> {t.choiceAccepted}
+                  </p>
+                  <span className="text-[#AFAFAF] font-bold text-sm">{t.dontLookAway}</span>
                </div>
              ) : (
                <button 
                 disabled={selectedChoices.length < 3} 
                 onClick={handleChoicesSubmit}
-                className="w-full py-5 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 rounded-2xl font-black uppercase tracking-widest transition-all cursor-pointer"
+                className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] disabled:border-[#E5E5E5] disabled:text-[#AFAFAF] disabled:active:translate-y-0 disabled:active:border-b-4 border-b-4 active:border-b-0 active:translate-y-[4px] rounded-2xl text-white font-extrabold text-lg uppercase transition-all"
                >
                  {t.sendChoice}
                </button>
@@ -481,40 +499,65 @@ export default function App() {
         )}
 
         {phase === 'LOBBY' && (
-          <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center space-y-6">
-            <Timer className="w-16 h-16 text-blue-500 mx-auto animate-spin-slow" />
-            <h2 className="text-3xl font-black uppercase">{t.quizPrep}</h2>
-            <p className="text-gray-400">{t.quizPrepSub}</p>
+          <motion.div key="lobby" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center space-y-6 max-w-sm">
+            <div className="w-32 h-32 mx-auto bg-[#FFC800]/20 rounded-full flex items-center justify-center mb-6 relative">
+              <Timer className="w-16 h-16 text-[#FFC800] animate-spin-slow absolute" />
+            </div>
+            <h2 className="text-3xl font-extrabold text-[#4B4B4B]">{t.quizPrep}</h2>
+            <p className="text-[#AFAFAF] text-lg font-bold">{t.quizPrepSub}</p>
           </motion.div>
         )}
 
         {phase === 'QUIZ' && (
-          <motion.div key="quiz" className="w-full max-w-2xl">
+          <motion.div key="quiz" className="w-full max-w-2xl px-4">
             {playerData.status === 'finished' ? (
-              <div className="text-center bg-white/5 p-12 rounded-3xl border border-white/10 backdrop-blur-md">
-                 <CheckCircle2 className="w-20 h-20 text-emerald-500 mx-auto mb-6" />
-                 <h2 className="text-3xl font-black uppercase mb-4 text-emerald-400">{t.quizFinished}</h2>
-                 <p className="text-gray-400 leading-relaxed">{t.quizFinishedSub}</p>
+              <div className="text-center bg-white p-10 rounded-3xl border-2 border-[#E5E5E5] shadow-sm">
+                 <div className="w-24 h-24 mx-auto bg-[#58CC02]/20 rounded-full flex items-center justify-center mb-6">
+                    <CheckCircle2 className="w-12 h-12 text-[#58CC02]" />
+                 </div>
+                 <h2 className="text-3xl font-extrabold mb-4 text-[#58CC02]">{t.quizFinished}</h2>
+                 <p className="text-[#AFB0B6] font-bold text-lg leading-relaxed">{t.quizFinishedSub}</p>
               </div>
             ) : playerData.status === 'quiz' ? (
-              <div className="bg-white/5 border border-white/10 p-8 md:p-12 rounded-3xl shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 h-1 bg-red-600 transition-all duration-1000" style={{ width: `${(quizTimer/10)*100}%` }}></div>
-                <div className="flex justify-between items-center mb-10">
-                   <span className="px-3 py-1 bg-white/5 rounded-lg text-xs font-mono text-gray-500">{quizStep + 1} / {QUESTIONS.length}</span>
-                   <div className="text-4xl font-black text-red-500 tabular-nums">{quizTimer}s</div>
+              <div className="bg-white border-2 border-[#E5E5E5] p-6 md:p-10 rounded-3xl shadow-sm relative overflow-hidden">
+                <div className="w-full bg-[#E5E5E5] h-4 rounded-full mb-8 overflow-hidden">
+                   <div 
+                     className="h-full bg-[#FF4B4B] rounded-full transition-all duration-1000 ease-linear flex items-center justify-end px-2 text-[10px] font-extrabold text-white"
+                     style={{ width: `${(quizTimer/10)*100}%` }}
+                   ></div>
                 </div>
-                <h3 className="text-2xl md:text-4xl font-bold mb-12 leading-tight">{QUESTIONS[quizStep].text[lang]}</h3>
+                
+                <div className="flex justify-between items-center mb-8">
+                   <span className="font-extrabold text-[#AFAFAF] text-lg">
+                      <span className="text-[#1CB0F6]">{quizStep + 1}</span> / {QUESTIONS.length}
+                   </span>
+                   <div className="text-3xl font-black text-[#FF4B4B] tabular-nums flex items-center gap-2">
+                     <Timer className="w-8 h-8" /> {quizTimer}s
+                   </div>
+                </div>
+                
+                <h3 className="text-2xl md:text-3xl font-extrabold text-[#4B4B4B] mb-8 leading-relaxed">
+                  {QUESTIONS[quizStep].text[lang]}
+                </h3>
+                
                 <div className="grid gap-4">
                   {QUESTIONS[quizStep].options[lang].map((opt, i) => (
-                    <button key={i} onClick={() => handleQuizAnswer(i)} className="p-6 text-left bg-white/5 border border-white/5 rounded-2xl hover:bg-blue-600/20 hover:border-blue-500/50 transition-all font-medium text-lg">
+                    <button 
+                      key={i} 
+                      onClick={() => handleQuizAnswer(i)} 
+                      className="p-5 text-left bg-white border-2 border-[#E5E5E5] border-b-4 hover:bg-[#F7F9FC] hover:border-[#1CB0F6] hover:text-[#1CB0F6] active:border-b-2 active:translate-y-[2px] rounded-2xl transition-all font-extrabold text-lg text-[#4B4B4B]"
+                    >
                       {opt}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="text-center">
-                 <button onClick={handleStartQuiz} className="px-16 py-8 bg-red-600 text-white font-black rounded-3xl text-3xl shadow-[0_0_50px_rgba(220,38,38,0.4)] animate-pulse hover:scale-105 active:scale-95 transition-all">
+              <div className="text-center pt-20">
+                 <button 
+                   onClick={handleStartQuiz} 
+                   className="w-full max-w-sm mx-auto py-5 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 active:border-b-0 active:translate-y-[4px] text-white font-extrabold rounded-2xl text-2xl uppercase transition-all shadow-[0_4px_14px_rgba(255,75,75,0.4)]"
+                 >
                    {t.startQuiz}
                  </button>
               </div>
@@ -523,24 +566,25 @@ export default function App() {
         )}
 
         {phase === 'RESULTS' && playerData.assignedRole && (
-          <motion.div key="res" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center space-y-12 max-w-sm">
-             <div className="p-1 w-40 h-40 rounded-full bg-gradient-to-tr from-emerald-500 to-cyan-400 mx-auto">
-               <div className="w-full h-full bg-[#0a0a0c] rounded-full flex items-center justify-center">
-                  {(() => {
-                    const r = ROLES.find(r => r.id === playerData.assignedRole);
-                    return r ? <r.icon size={80} className="text-emerald-400" /> : null
-                  })()}
-               </div>
+          <motion.div key="res" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-8 w-full max-w-md bg-white border-2 border-[#E5E5E5] p-8 rounded-3xl shadow-sm">
+             <div className="w-32 h-32 rounded-full bg-[#1CB0F6]/10 mx-auto flex items-center justify-center border-4 border-[#1CB0F6]/20">
+                {(() => {
+                  const r = ROLES.find(r => r.id === playerData.assignedRole);
+                  return r ? <r.icon size={64} className="text-[#1CB0F6]" /> : null
+                })()}
              </div>
+             
              <div>
-                <h2 className="text-[12px] text-gray-600 font-bold uppercase tracking-[0.5em] mb-4">{t.assignedRoleLabel}</h2>
-                <h3 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-300">
+                <h2 className="text-[#AFAFAF] font-extrabold uppercase tracking-widest text-sm mb-2">{t.assignedRoleLabel}</h2>
+                <h3 className="text-4xl font-black text-[#4B4B4B]">
                   {ROLES.find(r => r.id === playerData.assignedRole)?.name[lang]}
                 </h3>
              </div>
-             <div className="bg-emerald-500/10 p-6 rounded-2xl border border-emerald-500/20">
-                <p className="text-emerald-400 font-bold uppercase text-xs mb-1">{t.scoreLabel} {playerData.score} / 5</p>
-                <p className="text-gray-500 text-[10px] uppercase font-bold">{t.qualConfirmed}</p>
+             
+             <div className="bg-[#FFC800]/10 p-6 rounded-2xl border-2 border-[#FFC800]/30 flex flex-col items-center gap-2">
+                <Trophy className="w-10 h-10 text-[#FFC800]" />
+                <p className="text-[#4B4B4B] font-extrabold text-xl">{t.scoreLabel} <span className="text-[#FFC800]">{playerData.score} / 5</span></p>
+                <p className="text-[#AFAFAF] text-sm font-bold uppercase">{t.qualConfirmed}</p>
              </div>
           </motion.div>
         )}
@@ -552,111 +596,115 @@ export default function App() {
 function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang, setLang }: any) {
   const t = TRANSLATIONS[lang];
   return (
-    <div className="min-h-screen bg-[#050508] text-white flex flex-col">
-      <header className="p-6 border-b border-white/10 flex justify-between items-center bg-[#0a0a0c]/80 backdrop-blur-md sticky top-0 z-20">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
-              <Settings className="text-blue-500" size={24} />
+    <div className="min-h-screen bg-[#F7F9FC] text-[#4B4B4B] flex flex-col font-sans">
+      <header className="p-4 md:p-6 border-b-2 border-[#E5E5E5] flex justify-between items-center bg-white sticky top-0 z-20 shadow-sm flex-col md:flex-row gap-4">
+        <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-start">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-[#1CB0F6]/10 rounded-2xl border-2 border-[#1CB0F6]/20">
+              <Settings className="text-[#1CB0F6]" size={28} />
             </div>
             <div>
-              <h1 className="font-black uppercase tracking-widest text-sm">{t.adminTitle}</h1>
-              <p className="text-[8px] text-gray-500 uppercase font-bold tracking-tighter">{t.adminSub}</p>
+              <h1 className="font-black uppercase tracking-widest text-[#4B4B4B]">{t.adminTitle}</h1>
+              <p className="text-[10px] text-[#AFAFAF] uppercase font-bold tracking-tighter">{t.adminSub}</p>
             </div>
           </div>
           <div className="flex gap-2">
             <button 
               onClick={() => setLang('kz')}
-              className={`px-3 py-1 rounded text-[10px] font-black transition-all ${lang === 'kz' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-500 hover:bg-white/10'}`}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'kz' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
             >
               ҚАЗ
             </button>
             <button 
               onClick={() => setLang('ru')}
-              className={`px-3 py-1 rounded text-[10px] font-black transition-all ${lang === 'ru' ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-500 hover:bg-white/10'}`}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'ru' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
             >
               РУС
             </button>
           </div>
         </div>
-        <div className="flex gap-4">
-           {phase === 'IDLE' && <button onClick={() => onPhaseChange('PREFERENCES')} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-black uppercase transition-all shadow-lg">{t.phase1}</button>}
-           {phase === 'PREFERENCES' && <button onClick={() => onPhaseChange('LOBBY')} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-black uppercase transition-all shadow-lg">{t.phase2}</button>}
-           {phase === 'LOBBY' && <button onClick={() => onPhaseChange('QUIZ')} className="px-6 py-2 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-black uppercase transition-all shadow-lg animate-pulse">{t.phase3}</button>}
-           {phase === 'QUIZ' && <button onClick={onCalculate} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-black uppercase transition-all shadow-lg">{t.phase4}</button>}
-           <button onClick={onReset} className="p-3 bg-red-950/30 text-red-500 rounded-xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={20} /></button>
+        <div className="flex gap-3 flex-wrap md:flex-nowrap justify-center">
+           {phase === 'IDLE' && <button onClick={() => onPhaseChange('PREFERENCES')} className="px-6 py-3 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase1}</button>}
+           {phase === 'PREFERENCES' && <button onClick={() => onPhaseChange('LOBBY')} className="px-6 py-3 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase2}</button>}
+           {phase === 'LOBBY' && <button onClick={() => onPhaseChange('QUIZ')} className="px-6 py-3 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all animate-pulse">{t.phase3}</button>}
+           {phase === 'QUIZ' && <button onClick={onCalculate} className="px-6 py-3 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase4}</button>}
+           <button onClick={onReset} className="p-3 bg-white text-[#FF4B4B] rounded-2xl border-2 border-[#E5E5E5] border-b-4 hover:border-[#FF4B4B] hover:bg-[#FF4B4B]/5 active:border-b-2 active:translate-y-[2px] transition-all"><Trash2 size={24} /></button>
         </div>
       </header>
 
-      <main className="flex-1 p-6 grid lg:grid-cols-2 gap-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-4 md:p-8 grid lg:grid-cols-2 gap-8 max-w-7xl mx-auto w-full">
         {/* Players List */}
-        <section className="bg-white/5 rounded-3xl border border-white/10 p-8">
-           <div className="flex justify-between items-center mb-8 pb-4 border-b border-white/5">
-             <h3 className="text-xl font-black uppercase italic flex items-center gap-3">
-               <Users size={20} className="text-blue-500" />
-               {t.connectedPlayers} ({players.length})
+        <section className="bg-white rounded-3xl border-2 border-[#E5E5E5] p-6 md:p-8 shadow-sm h-fit">
+           <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-[#E5E5E5]">
+             <h3 className="text-xl font-black uppercase text-[#4B4B4B] flex items-center gap-3">
+               <Users size={24} className="text-[#1CB0F6]" />
+               {t.connectedPlayers} <span className="bg-[#E5E5E5] text-[#4B4B4B] px-3 py-1 rounded-xl text-sm">{players.length}</span>
              </h3>
            </div>
            
-           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+           <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
              {players.sort((a: any, b: any) => b.score - a.score).map((p, idx) => (
-               <div key={p.id} className="p-5 bg-white/2 border border-white/5 rounded-2xl flex justify-between items-center group hover:bg-white/5 transition-all">
+               <div key={p.id} className="p-4 bg-white border-2 border-[#E5E5E5] rounded-2xl flex justify-between items-center hover:bg-[#F7F9FC] transition-all">
                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] font-mono text-gray-700">{idx + 1}</span>
+                    <div className="w-8 h-8 rounded-full bg-[#E5E5E5] text-[#AFAFAF] flex items-center justify-center font-black text-xs">
+                      {idx + 1}
+                    </div>
                     <div>
-                      <p className="font-bold text-lg leading-none mb-1">{p.name}</p>
+                      <p className="font-bold text-lg leading-none mb-2 text-[#4B4B4B]">{p.name}</p>
                       <div className="flex gap-2">
                          {p.choices.map((c: string, i: number) => (
-                            <span key={i} className="text-[8px] bg-white/10 px-1 py-0.5 rounded text-gray-500 uppercase font-black">{ROLES.find(r => r.id === c)?.id}</span>
+                            <span key={i} className="text-[10px] bg-[#F7F9FC] border-2 border-[#E5E5E5] px-2 py-1 rounded-lg text-[#AFAFAF] uppercase font-black">{ROLES.find(r => r.id === c)?.id}</span>
                          ))}
                       </div>
                     </div>
                  </div>
                  <div className="flex items-center gap-6">
                     <div className="text-right">
-                       <span className="text-sm font-black text-emerald-400 block">{p.score} / 5</span>
-                       <span className="text-[9px] text-gray-600 uppercase font-bold tracking-tighter">{(p.timeTaken/1000).toFixed(2)}s</span>
+                       <span className="text-lg font-black text-[#FFC800] block">{p.score} <span className="text-[#AFAFAF] text-sm">/ 5</span></span>
+                       <span className="text-[10px] text-[#AFAFAF] uppercase font-bold tracking-tighter">{(p.timeTaken/1000).toFixed(2)}s</span>
                     </div>
-                    <div className={`w-3 h-3 rounded-full ${p.status === 'finished' ? 'bg-emerald-500' : p.status === 'quiz' ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                    <div className={`w-4 h-4 rounded-full border-2 border-white shadow-sm ${p.status === 'finished' ? 'bg-[#58CC02]' : p.status === 'quiz' ? 'bg-[#FF4B4B] animate-pulse' : 'bg-[#E5E5E5]'}`}></div>
                  </div>
                </div>
              ))}
-             {players.length === 0 && <div className="text-center py-20 text-gray-700 font-bold uppercase tracking-widest text-xs">{t.noPlayers}</div>}
+             {players.length === 0 && <div className="text-center py-20 text-[#AFAFAF] font-bold uppercase tracking-widest text-sm">{t.noPlayers}</div>}
            </div>
         </section>
 
         {/* Dashboard / Analytics */}
-        <section className="space-y-8">
-           <div className="p-1 bg-gradient-to-br from-blue-600/30 to-transparent rounded-3xl">
-              <div className="bg-[#0a0a0c] p-8 rounded-[22px] border border-white/5">
-                <h4 className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.3em] mb-6">{t.sysStatus}</h4>
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="p-6 bg-white/2 rounded-2xl border border-white/5">
-                      <span className="text-[8px] text-gray-600 uppercase font-black block mb-1">{t.status}</span>
-                      <span className="text-3xl font-black italic uppercase text-blue-500">{phase}</span>
-                   </div>
-                   <div className="p-6 bg-white/2 rounded-2xl border border-white/5">
-                      <span className="text-[8px] text-gray-600 uppercase font-black block mb-1">{t.finishedCount}</span>
-                      <span className="text-3xl font-black tabular-nums">{players.filter((p: any) => p.status === 'finished').length}</span>
-                   </div>
+        <section className="space-y-8 h-fit">
+           <div className="bg-white rounded-3xl border-2 border-[#E5E5E5] p-6 md:p-8 shadow-sm">
+             <h4 className="text-xs text-[#AFAFAF] font-extrabold uppercase tracking-widest mb-6 flex items-center gap-2">
+                <Settings size={16} /> {t.sysStatus}
+             </h4>
+             <div className="grid grid-cols-2 gap-4">
+                <div className="p-6 bg-[#F7F9FC] rounded-2xl border-2 border-[#E5E5E5]">
+                   <span className="text-[10px] text-[#AFAFAF] uppercase font-black block mb-2">{t.status}</span>
+                   <span className="text-2xl font-black uppercase text-[#1CB0F6]">{phase}</span>
                 </div>
-              </div>
+                <div className="p-6 bg-[#F7F9FC] rounded-2xl border-2 border-[#E5E5E5]">
+                   <span className="text-[10px] text-[#AFAFAF] uppercase font-black block mb-2">{t.finishedCount}</span>
+                   <span className="text-3xl font-black text-[#58CC02]">{players.filter((p: any) => p.status === 'finished').length}</span>
+                </div>
+             </div>
            </div>
 
-           <div className="bg-white/5 rounded-3xl border border-white/10 p-8">
-              <h4 className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.3em] mb-6">{t.roleDist}</h4>
-              <div className="space-y-4">
+           <div className="bg-white rounded-3xl border-2 border-[#E5E5E5] p-6 md:p-8 shadow-sm">
+              <h4 className="text-xs text-[#AFAFAF] font-extrabold uppercase tracking-widest mb-6 flex items-center gap-2">
+                 <Users size={16} /> {t.roleDist}
+              </h4>
+              <div className="space-y-6">
                  {ROLES.map(role => {
                     const assigned = players.filter((p: any) => p.assignedRole === role.id).length;
                     const progress = (assigned / (role.limit === 99 ? players.length || 1 : role.limit)) * 100;
                     return (
                       <div key={role.id}>
-                         <div className="flex justify-between items-end mb-2">
-                            <span className={`text-sm font-bold uppercase tracking-tight ${role.color}`}>{role.name[lang]}</span>
-                            <span className="text-xs font-mono text-gray-500">{assigned} / {role.limit === 99 ? '∞' : role.limit}</span>
+                         <div className="flex justify-between items-end mb-3">
+                            <span className={`text-sm font-extrabold uppercase ${role.color.replace('text-', 'text-').replace('-500', '')}`}>{role.name[lang]}</span>
+                            <span className="text-xs font-bold text-[#AFAFAF]">{assigned} / {role.limit === 99 ? '∞' : role.limit}</span>
                          </div>
-                         <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                            <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(progress, 100)}%` }} className={`h-full ${role.color.replace('text-', 'bg-')}`} />
+                         <div className="h-3 bg-[#F7F9FC] rounded-full overflow-hidden border-2 border-[#E5E5E5]">
+                            <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(progress, 100)}%` }} className={`h-full ${role.color.replace('text-', 'bg-').replace('-500', '-500')}`} />
                          </div>
                       </div>
                     );
@@ -669,9 +717,10 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
       <style>{`
         .animate-spin-slow { animation: spin 8s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #F7F9FC; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E5E5E5; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #AFAFAF; }
       `}</style>
     </div>
   );
