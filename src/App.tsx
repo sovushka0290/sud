@@ -195,51 +195,53 @@ export default function App() {
 
   // --- API Sync (Polling) ---
 
+  const lastStateRef = useRef<string>('');
+  const lastPlayerRef = useRef<string>('');
+
   useEffect(() => {
     let isMounted = true;
-    const pollState = async () => {
+    let timeoutId: NodeJS.Timeout;
+
+    const poll = async () => {
       try {
-        const res = await fetch('/api/state', { cache: 'no-store' });
-        if (!res.ok) throw new Error('API down');
-        const data = await res.json();
-        if (isMounted) {
-          setPhase(data.phase);
-          setPlayers(data.players);
+        // Poll Global State
+        const stateRes = await fetch('/api/state', { cache: 'no-store' });
+        if (stateRes.ok) {
+          const stateData = await stateRes.json();
+          const stateString = JSON.stringify(stateData);
+          if (isMounted && stateString !== lastStateRef.current) {
+            lastStateRef.current = stateString;
+            setPhase(stateData.phase);
+            setPlayers(stateData.players);
+          }
+        }
+
+        // Poll Player Specific Data (if not admin)
+        if (!isAdmin && isMounted) {
+          const playerRes = await fetch(`/api/players/${guestId}`, { cache: 'no-store' });
+          if (playerRes.ok) {
+            const playerDataRaw = await playerRes.json();
+            const playerString = JSON.stringify(playerDataRaw);
+            if (isMounted && playerString !== lastPlayerRef.current) {
+              lastPlayerRef.current = playerString;
+              setPlayerData(playerDataRaw);
+            }
+          }
         }
       } catch (e) {
-        console.error("Polling error", e);
+        console.error("Sync error", e);
+      } finally {
+        if (isMounted) {
+          timeoutId = setTimeout(poll, 3000);
+        }
       }
     };
 
-    pollState();
-    const interval = setInterval(pollState, 2000);
+    poll();
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      clearTimeout(timeoutId);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!isAdmin) {
-      let isMounted = true;
-      const pollPlayerData = async () => {
-        try {
-          const res = await fetch(`/api/players/${guestId}`, { cache: 'no-store' });
-          if (!res.ok) throw new Error('API down');
-          const data = await res.json();
-          if (isMounted) setPlayerData(data);
-        } catch (e) {
-          console.error("Player polling error", e);
-        }
-      };
-
-      pollPlayerData();
-      const interval = setInterval(pollPlayerData, 2000);
-      return () => {
-        isMounted = false;
-        clearInterval(interval);
-      };
-    }
   }, [guestId, isAdmin]);
 
   // Quiz Timer Logic
@@ -263,21 +265,26 @@ export default function App() {
       return;
     }
 
+    const newPlayerData: Player = {
+      id: guestId,
+      name: userNameInput,
+      choices: [],
+      score: 0,
+      timeTaken: 0,
+      assignedRole: null,
+      status: 'waiting'
+    };
+
     try {
+      setPlayerData(newPlayerData); // Set locally first for instant feedback
       await fetch(`/api/players/${guestId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: userNameInput,
-          choices: [],
-          score: 0,
-          timeTaken: 0,
-          assignedRole: null,
-          status: 'waiting'
-        })
+        body: JSON.stringify(newPlayerData)
       });
     } catch (e) {
       console.error("Login write failed", e);
+      setPlayerData(null);
       alert(lang === 'kz' ? 'Жүйеге кіру қатесі!' : 'Ошибка входа в систему!');
     }
   };
