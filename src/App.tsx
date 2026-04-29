@@ -4,6 +4,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { db } from './firebase';
+import { doc, onSnapshot, collection, setDoc, updateDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Gavel, 
@@ -19,7 +21,9 @@ import {
   LogIn,
   CheckCircle2,
   Trash2,
-  Share2
+  Share2,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 // --- Types & Constants ---
@@ -194,64 +198,74 @@ export default function App() {
   const [quizTimer, setQuizTimer] = useState(10);
   const [quizStartTime, setQuizStartTime] = useState(0);
 
-  // --- API Sync (Polling) ---
-
-  const lastStateRef = useRef<string>('');
-  const lastPlayerRef = useRef<string>('');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('app_theme') as 'light' | 'dark') || 'light';
+  });
 
   useEffect(() => {
-    let isMounted = true;
-    let timeoutId: NodeJS.Timeout;
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('app_theme', theme);
+  }, [theme]);
 
-    const poll = async () => {
-      try {
-        // Poll Global State
-        const stateRes = await fetch('/api/state', { cache: 'no-store' });
-        if (stateRes.ok) {
-          const stateData = await stateRes.json();
-          const stateString = JSON.stringify(stateData);
-          if (isMounted && stateString !== lastStateRef.current) {
-            lastStateRef.current = stateString;
-            setPhase(stateData.phase);
-            setPlayers(stateData.players);
-          }
-        }
+  // --- API Sync (Polling) ---
 
-        // Poll Player Specific Data (if not admin and not currently editing name)
-        if (!isAdmin && isMounted && !isEditingName) {
-          const playerRes = await fetch(`/api/players/${guestId}`, { cache: 'no-store' });
-          if (playerRes.ok) {
-            const playerDataRaw = await playerRes.json();
-            const playerString = JSON.stringify(playerDataRaw);
-            if (isMounted && playerString !== lastPlayerRef.current) {
-              lastPlayerRef.current = playerString;
-              setPlayerData(playerDataRaw);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Sync error", e);
-      } finally {
-        if (isMounted) {
-          timeoutId = setTimeout(poll, 3000);
+  
+  useEffect(() => {
+    let unsubscribeState: () => void;
+    let unsubscribePlayers: () => void;
+
+    // Listen to Game State
+    unsubscribeState = onSnapshot(doc(db, 'game', 'state'), (docSnap) => {
+      if (docSnap.exists()) {
+        setPhase(docSnap.data().phase as GamePhase);
+      } else {
+        // init if not exists
+        setDoc(doc(db, 'game', 'state'), { phase: 'IDLE' });
+      }
+    });
+
+    // Listen to Players Collection
+    unsubscribePlayers = onSnapshot(collection(db, 'players'), (snapshot) => {
+      const pList: Player[] = [];
+      snapshot.forEach(d => pList.push(d.data() as Player));
+      setPlayers(pList);
+      
+      if (!isEditingName) {
+        const me = pList.find(p => p.id === guestId);
+        if (me) {
+          setPlayerData(me);
+        } else if (playerData && !me) {
+          // If we were logged in but deleted
+          setPlayerData(null);
         }
       }
-    };
+    });
 
-    poll();
     return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
+      if (unsubscribeState) unsubscribeState();
+      if (unsubscribePlayers) unsubscribePlayers();
     };
-  }, [guestId, isAdmin, isEditingName]);
+  }, [guestId, isEditingName]);
 
-  // Quiz Timer Logic
+
+  const isAnsweringRef = useRef(false);
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (phase === 'QUIZ' && playerData?.status === 'quiz' && quizTimer > 0) {
       interval = setInterval(() => setQuizTimer(t => t - 1), 1000);
-    } else if (quizTimer === 0 && phase === 'QUIZ' && playerData?.status === 'quiz') {
-      handleQuizAnswer(-1); // Timeout as wrong answer
+    } else if (quizTimer === 0 && phase === 'QUIZ' && playerData?.status === 'quiz' && !isAnsweringRef.current) {
+      isAnsweringRef.current = true;
+      if (playerData.status === 'quiz') {
+        setPlayerData(p => p ? { ...p, status: 'finished' } : p);
+        handleQuizAnswer(-1).finally(() => {
+          isAnsweringRef.current = false;
+        });
+      }
     }
     return () => clearInterval(interval);
   }, [phase, playerData?.status, quizTimer]);
@@ -279,11 +293,7 @@ export default function App() {
     try {
       setPlayerData(newPlayerData);
       setIsEditingName(false); // Finished editing
-      await fetch(`/api/players/${guestId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newPlayerData)
-      });
+      await setDoc(doc(db, 'players', guestId), newPlayerData);
     } catch (e) {
       console.error("Login write failed", e);
       setPlayerData(null);
@@ -291,14 +301,12 @@ export default function App() {
     }
   };
 
+
+
   const handleChoicesSubmit = async () => {
     if (selectedChoices.length < 3) return;
     try {
-      await fetch(`/api/players/${guestId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ choices: selectedChoices })
-      });
+      await updateDoc(doc(db, 'players', guestId), { choices: selectedChoices });
     } catch (e) {
       console.error("Choices submit failed", e);
     }
@@ -310,11 +318,7 @@ export default function App() {
     setQuizTimer(10);
     setQuizStartTime(Date.now());
     try {
-      await fetch(`/api/players/${guestId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'quiz' })
-      });
+      await updateDoc(doc(db, 'players', guestId), { status: 'quiz' });
     } catch (e) {
       console.error("Start quiz failed", e);
     }
@@ -331,14 +335,10 @@ export default function App() {
     } else {
       const totalTime = Date.now() - quizStartTime;
       try {
-        await fetch(`/api/players/${guestId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            status: 'finished',
-            score: finalScore,
-            timeTaken: totalTime
-          })
+        await updateDoc(doc(db, 'players', guestId), {
+          status: 'finished',
+          score: finalScore,
+          timeTaken: totalTime
         });
       } catch (e) {
         console.error("Quiz answer submit failed", e);
@@ -346,17 +346,23 @@ export default function App() {
     }
   };
 
-  const LanguageToggle = () => (
+  const ControlsToggle = () => (
     <div className="fixed top-6 right-6 md:right-10 z-50 flex gap-2">
       <button 
+        onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+        className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]`}
+      >
+        {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+      </button>
+      <button 
         onClick={() => setLang('kz')}
-        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'kz' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
+        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'kz' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]'}`}
       >
         ҚАЗ
       </button>
       <button 
         onClick={() => setLang('ru')}
-        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'ru' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
+        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'ru' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]'}`}
       >
         РУС
       </button>
@@ -366,20 +372,50 @@ export default function App() {
   // --- Admin Logic ---
 
   const setGlobalPhase = async (newPhase: GamePhase) => {
-    await fetch('/api/admin/phase', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newPhase })
-    });
+    await updateDoc(doc(db, 'game', 'state'), { phase: newPhase });
   };
 
   const calculateResults = async () => {
-    await fetch('/api/admin/calculate', { method: 'POST' });
+    const ROLES_LIMITS: Record<string, number> = {
+      judge: 1, prosecutor: 1, lawyer: 1, secretary: 1, witness: 99
+    };
+
+    const candidates = [...players]
+      .filter((p: any) => p.status === 'finished')
+      .sort((a: any, b: any) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.timeTaken - b.timeTaken;
+      });
+
+    const roleAllocations: Record<string, number> = {
+      judge: 0, prosecutor: 0, lawyer: 0, secretary: 0, witness: 0
+    };
+
+    const batch = writeBatch(db);
+
+    for (const p of candidates) {
+      let assigned = 'witness';
+      for (const choice of p.choices) {
+        if (roleAllocations[choice] < ROLES_LIMITS[choice]) {
+          assigned = choice;
+          roleAllocations[choice]++;
+          break;
+        }
+      }
+      batch.update(doc(db, 'players', p.id), { assignedRole: assigned });
+    }
+
+    batch.update(doc(db, 'game', 'state'), { phase: 'RESULTS' });
+    await batch.commit();
   };
 
   const resetGame = async () => {
-    await fetch('/api/admin/reset', { method: 'POST' });
-    window.location.reload();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'game', 'state'), { phase: 'IDLE' });
+    // DANGER: We delete all players manually or keep them? Instead of deleting, just reset the app by page reload and deleting players
+    const qs = await getDocs(collection(db, 'players'));
+    qs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
   };
 
   // --- UI Components ---
@@ -387,14 +423,14 @@ export default function App() {
   if (isAdmin) return <AdminPanel players={players} phase={phase} onPhaseChange={setGlobalPhase} onCalculate={calculateResults} onReset={resetGame} lang={lang} setLang={setLang} />;
 
   if (!playerData && !isAdmin) return (
-    <div className="min-h-screen bg-[#F7F9FC] flex flex-col items-center justify-center p-6 relative font-sans text-[#4B4B4B]">
-      <LanguageToggle />
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white border-2 border-[#E5E5E5] p-8 rounded-3xl max-w-md w-full shadow-sm text-center">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] flex flex-col items-center justify-center p-6 relative font-sans text-white">
+      <ControlsToggle />
+      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl max-w-md w-full shadow-sm text-center">
         <div className="w-24 h-24 mx-auto bg-[#1CB0F6]/10 rounded-3xl rotate-12 flex items-center justify-center mb-6 border-4 border-[#1CB0F6]/20">
           <Scale className="w-12 h-12 text-[#1CB0F6] -rotate-12" />
         </div>
-        <h2 className="text-3xl font-black mb-2 text-[#4B4B4B]">{t.title}</h2>
-        <p className="text-[#AFAFAF] font-bold text-sm mb-8 uppercase tracking-widest">{t.regTitle}</p>
+        <h2 className="text-3xl font-black mb-2 text-white">{t.title}</h2>
+        <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm mb-8 uppercase tracking-widest">{t.regTitle}</p>
         
         <div className="space-y-4">
           <input 
@@ -403,12 +439,12 @@ export default function App() {
             value={userNameInput} 
             onChange={(e) => setUserNameInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            className="w-full bg-[#F7F9FC] border-2 border-[#E5E5E5] rounded-2xl px-6 py-4 text-[#4B4B4B] focus:border-[#1CB0F6] focus:bg-white outline-none transition-all placeholder:text-[#AFAFAF] font-extrabold text-lg"
+            className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-4 text-white focus:border-[#1CB0F6] focus:bg-white dark:bg-[#2A2B35] outline-none transition-all placeholder:text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold text-lg"
           />
           <button 
             disabled={!userNameInput.trim()}
             onClick={handleLogin} 
-            className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] disabled:border-[#E5E5E5] disabled:text-[#AFAFAF] border-b-4 active:border-b-0 disabled:active:border-b-4 disabled:active:translate-y-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-lg flex items-center justify-center gap-2 transition-all uppercase"
+            className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 active:border-b-0 disabled:active:border-b-4 disabled:active:translate-y-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-lg flex items-center justify-center gap-2 transition-all uppercase"
           >
             {t.loginBtn}
           </button>
@@ -418,8 +454,8 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#F7F9FC] text-[#4B4B4B] p-4 md:p-8 flex flex-col items-center justify-center relative font-sans">
-      <LanguageToggle />
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-white p-4 md:p-8 flex flex-col items-center justify-center relative font-sans">
+      <ControlsToggle />
       <AnimatePresence mode="wait">
         {phase === 'IDLE' && (
           <motion.div key="idle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="text-center space-y-6 w-full max-w-sm">
@@ -427,14 +463,14 @@ export default function App() {
               <BrainCircuit className="w-16 h-16 text-[#1CB0F6]" />
             </div>
             <h2 className="text-3xl font-extrabold">{t.welcome},<br/><span className="text-[#1CB0F6]">{playerData.name}!</span></h2>
-            <p className="text-[#AFAFAF] font-bold text-lg">{t.waitText}</p>
+            <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-lg">{t.waitText}</p>
             <button 
               onClick={() => {
                 setPlayerData(null);
                 setUserNameInput(playerData.name);
                 setIsEditingName(true);
               }}
-              className="mt-6 w-full px-6 py-4 bg-white hover:bg-gray-50 border-2 border-[#E5E5E5] hover:border-gray-300 border-b-4 active:border-b-2 active:translate-y-[2px] rounded-2xl text-[#AFB0B6] font-extrabold uppercase transition-all"
+              className="mt-6 w-full px-6 py-4 bg-white dark:bg-[#2A2B35] hover:bg-[#F7F9FC] dark:hover:bg-[#343541] border-2 border-[#E5E5E5] dark:border-[#393A4B] hover:border-gray-300 border-b-4 active:border-b-2 active:translate-y-[2px] rounded-2xl text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase transition-all"
             >
               {lang === 'kz' ? 'Атты өзгерту' : 'Изменить имя'}
             </button>
@@ -442,9 +478,9 @@ export default function App() {
         )}
 
         {phase === 'PREFERENCES' && (
-          <motion.div key="pref" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white border-2 border-[#E5E5E5] p-6 md:p-8 rounded-3xl max-w-xl w-full shadow-sm">
-             <h3 className="text-2xl font-extrabold mb-2 text-center text-[#4B4B4B]">{t.chooseRoles}</h3>
-             <p className="text-[#AFAFAF] text-center font-bold mb-8">{t.chooseSub}</p>
+          <motion.div key="pref" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 rounded-3xl max-w-xl w-full shadow-sm">
+             <h3 className="text-2xl font-extrabold mb-2 text-center text-white">{t.chooseRoles}</h3>
+             <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-center font-bold mb-8">{t.chooseSub}</p>
              
              <div className="grid gap-3 mb-8">
                {ROLES.map(r => {
@@ -460,15 +496,15 @@ export default function App() {
                   className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between group
                     ${isSelected 
                       ? 'bg-[#DDF4FF] border-[#1CB0F6] border-b-4 active:border-b-2 active:translate-y-[2px]' 
-                      : 'bg-white border-[#E5E5E5] border-b-4 hover:bg-[#F7F9FC] active:border-b-2 active:translate-y-[2px]'}
+                      : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:bg-[#181920] active:border-b-2 active:translate-y-[2px]'}
                     ${playerData.choices.length > 0 ? 'opacity-70 pointer-events-none border-b-2 translate-y-[2px]' : ''}
                   `}
                  >
                    <div className="flex items-center gap-4">
-                      <div className={`p-3 rounded-2xl ${isSelected ? 'bg-white shadow-sm' : 'bg-[#F7F9FC]'} ${r.color.replace('text-', 'text-').replace('-500', '-500')}`}>
-                         <r.icon size={28} style={{ color: isSelected ? '#1CB0F6' : '#AFAFAF' }} />
+                      <div className={`p-3 rounded-2xl ${isSelected ? 'bg-white dark:bg-[#2A2B35] shadow-sm' : 'bg-[#F7F9FC] dark:bg-[#181920]'} ${r.color.replace('text-', 'text-').replace('-500', '-500')}`}>
+                         <r.icon size={28} style={{ color: isSelected ? '#1CB0F6' : '#8C8F9F' }} />
                       </div>
-                      <span className={`font-extrabold text-lg ${isSelected ? 'text-[#1CB0F6]' : 'text-[#4B4B4B]'}`}>{r.name[lang]}</span>
+                      <span className={`font-extrabold text-lg ${isSelected ? 'text-[#1CB0F6]' : 'text-white'}`}>{r.name[lang]}</span>
                    </div>
                    {isSelected && (
                      <div className="w-8 h-8 rounded-full bg-[#1CB0F6] text-white flex items-center justify-center font-black text-sm shadow-sm">
@@ -484,13 +520,13 @@ export default function App() {
                   <p className="text-[#58CC02] font-extrabold text-lg mb-1 flex items-center justify-center gap-2">
                     <CheckCircle2 className="w-6 h-6" /> {t.choiceAccepted}
                   </p>
-                  <span className="text-[#AFAFAF] font-bold text-sm">{t.dontLookAway}</span>
+                  <span className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm">{t.dontLookAway}</span>
                </div>
              ) : (
                <button 
                 disabled={selectedChoices.length < 3} 
                 onClick={handleChoicesSubmit}
-                className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] disabled:border-[#E5E5E5] disabled:text-[#AFAFAF] disabled:active:translate-y-0 disabled:active:border-b-4 border-b-4 active:border-b-0 active:translate-y-[4px] rounded-2xl text-white font-extrabold text-lg uppercase transition-all"
+                className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] disabled:active:translate-y-0 disabled:active:border-b-4 border-b-4 active:border-b-0 active:translate-y-[4px] rounded-2xl text-white font-extrabold text-lg uppercase transition-all"
                >
                  {t.sendChoice}
                </button>
@@ -503,24 +539,24 @@ export default function App() {
             <div className="w-32 h-32 mx-auto bg-[#FFC800]/20 rounded-full flex items-center justify-center mb-6 relative">
               <Timer className="w-16 h-16 text-[#FFC800] animate-spin-slow absolute" />
             </div>
-            <h2 className="text-3xl font-extrabold text-[#4B4B4B]">{t.quizPrep}</h2>
-            <p className="text-[#AFAFAF] text-lg font-bold">{t.quizPrepSub}</p>
+            <h2 className="text-3xl font-extrabold text-white">{t.quizPrep}</h2>
+            <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-lg font-bold">{t.quizPrepSub}</p>
           </motion.div>
         )}
 
         {phase === 'QUIZ' && (
           <motion.div key="quiz" className="w-full max-w-2xl px-4">
             {playerData.status === 'finished' ? (
-              <div className="text-center bg-white p-10 rounded-3xl border-2 border-[#E5E5E5] shadow-sm">
+              <div className="text-center bg-white dark:bg-[#2A2B35] p-10 rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] shadow-sm">
                  <div className="w-24 h-24 mx-auto bg-[#58CC02]/20 rounded-full flex items-center justify-center mb-6">
                     <CheckCircle2 className="w-12 h-12 text-[#58CC02]" />
                  </div>
                  <h2 className="text-3xl font-extrabold mb-4 text-[#58CC02]">{t.quizFinished}</h2>
-                 <p className="text-[#AFB0B6] font-bold text-lg leading-relaxed">{t.quizFinishedSub}</p>
+                 <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-lg leading-relaxed">{t.quizFinishedSub}</p>
               </div>
             ) : playerData.status === 'quiz' ? (
-              <div className="bg-white border-2 border-[#E5E5E5] p-6 md:p-10 rounded-3xl shadow-sm relative overflow-hidden">
-                <div className="w-full bg-[#E5E5E5] h-4 rounded-full mb-8 overflow-hidden">
+              <div className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-10 rounded-3xl shadow-sm relative overflow-hidden">
+                <div className="w-full bg-[#E5E5E5] dark:bg-[#393A4B] h-4 rounded-full mb-8 overflow-hidden">
                    <div 
                      className="h-full bg-[#FF4B4B] rounded-full transition-all duration-1000 ease-linear flex items-center justify-end px-2 text-[10px] font-extrabold text-white"
                      style={{ width: `${(quizTimer/10)*100}%` }}
@@ -528,7 +564,7 @@ export default function App() {
                 </div>
                 
                 <div className="flex justify-between items-center mb-8">
-                   <span className="font-extrabold text-[#AFAFAF] text-lg">
+                   <span className="font-extrabold text-[#AFAFAF] dark:text-[#8C8F9F] text-lg">
                       <span className="text-[#1CB0F6]">{quizStep + 1}</span> / {QUESTIONS.length}
                    </span>
                    <div className="text-3xl font-black text-[#FF4B4B] tabular-nums flex items-center gap-2">
@@ -536,7 +572,7 @@ export default function App() {
                    </div>
                 </div>
                 
-                <h3 className="text-2xl md:text-3xl font-extrabold text-[#4B4B4B] mb-8 leading-relaxed">
+                <h3 className="text-2xl md:text-3xl font-extrabold text-white mb-8 leading-relaxed">
                   {QUESTIONS[quizStep].text[lang]}
                 </h3>
                 
@@ -545,7 +581,7 @@ export default function App() {
                     <button 
                       key={i} 
                       onClick={() => handleQuizAnswer(i)} 
-                      className="p-5 text-left bg-white border-2 border-[#E5E5E5] border-b-4 hover:bg-[#F7F9FC] hover:border-[#1CB0F6] hover:text-[#1CB0F6] active:border-b-2 active:translate-y-[2px] rounded-2xl transition-all font-extrabold text-lg text-[#4B4B4B]"
+                      className="p-5 text-left bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:bg-[#181920] hover:border-[#1CB0F6] hover:text-[#1CB0F6] active:border-b-2 active:translate-y-[2px] rounded-2xl transition-all font-extrabold text-lg text-white"
                     >
                       {opt}
                     </button>
@@ -566,7 +602,7 @@ export default function App() {
         )}
 
         {phase === 'RESULTS' && playerData.assignedRole && (
-          <motion.div key="res" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-8 w-full max-w-md bg-white border-2 border-[#E5E5E5] p-8 rounded-3xl shadow-sm">
+          <motion.div key="res" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-8 w-full max-w-md bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl shadow-sm">
              <div className="w-32 h-32 rounded-full bg-[#1CB0F6]/10 mx-auto flex items-center justify-center border-4 border-[#1CB0F6]/20">
                 {(() => {
                   const r = ROLES.find(r => r.id === playerData.assignedRole);
@@ -575,16 +611,16 @@ export default function App() {
              </div>
              
              <div>
-                <h2 className="text-[#AFAFAF] font-extrabold uppercase tracking-widest text-sm mb-2">{t.assignedRoleLabel}</h2>
-                <h3 className="text-4xl font-black text-[#4B4B4B]">
+                <h2 className="text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase tracking-widest text-sm mb-2">{t.assignedRoleLabel}</h2>
+                <h3 className="text-4xl font-black text-white">
                   {ROLES.find(r => r.id === playerData.assignedRole)?.name[lang]}
                 </h3>
              </div>
              
              <div className="bg-[#FFC800]/10 p-6 rounded-2xl border-2 border-[#FFC800]/30 flex flex-col items-center gap-2">
                 <Trophy className="w-10 h-10 text-[#FFC800]" />
-                <p className="text-[#4B4B4B] font-extrabold text-xl">{t.scoreLabel} <span className="text-[#FFC800]">{playerData.score} / 5</span></p>
-                <p className="text-[#AFAFAF] text-sm font-bold uppercase">{t.qualConfirmed}</p>
+                <p className="text-white font-extrabold text-xl">{t.scoreLabel} <span className="text-[#FFC800]">{playerData.score} / 5</span></p>
+                <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-sm font-bold uppercase">{t.qualConfirmed}</p>
              </div>
           </motion.div>
         )}
@@ -596,28 +632,28 @@ export default function App() {
 function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang, setLang }: any) {
   const t = TRANSLATIONS[lang];
   return (
-    <div className="min-h-screen bg-[#F7F9FC] text-[#4B4B4B] flex flex-col font-sans">
-      <header className="p-4 md:p-6 border-b-2 border-[#E5E5E5] flex justify-between items-center bg-white sticky top-0 z-20 shadow-sm flex-col md:flex-row gap-4">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-white flex flex-col font-sans">
+      <header className="p-4 md:p-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B] flex justify-between items-center bg-white dark:bg-[#2A2B35] sticky top-0 z-20 shadow-sm flex-col md:flex-row gap-4">
         <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-[#1CB0F6]/10 rounded-2xl border-2 border-[#1CB0F6]/20">
               <Settings className="text-[#1CB0F6]" size={28} />
             </div>
             <div>
-              <h1 className="font-black uppercase tracking-widest text-[#4B4B4B]">{t.adminTitle}</h1>
-              <p className="text-[10px] text-[#AFAFAF] uppercase font-bold tracking-tighter">{t.adminSub}</p>
+              <h1 className="font-black uppercase tracking-widest text-white">{t.adminTitle}</h1>
+              <p className="text-[10px] text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-bold tracking-tighter">{t.adminSub}</p>
             </div>
           </div>
           <div className="flex gap-2">
             <button 
               onClick={() => setLang('kz')}
-              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'kz' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'kz' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:bg-[#181920]'}`}
             >
               ҚАЗ
             </button>
             <button 
               onClick={() => setLang('ru')}
-              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'ru' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white border-[#E5E5E5] text-[#AFAFAF] hover:bg-[#F7F9FC]'}`}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'ru' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:bg-[#181920]'}`}
             >
               РУС
             </button>
@@ -628,69 +664,69 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
            {phase === 'PREFERENCES' && <button onClick={() => onPhaseChange('LOBBY')} className="px-6 py-3 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase2}</button>}
            {phase === 'LOBBY' && <button onClick={() => onPhaseChange('QUIZ')} className="px-6 py-3 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all animate-pulse">{t.phase3}</button>}
            {phase === 'QUIZ' && <button onClick={onCalculate} className="px-6 py-3 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase4}</button>}
-           <button onClick={onReset} className="p-3 bg-white text-[#FF4B4B] rounded-2xl border-2 border-[#E5E5E5] border-b-4 hover:border-[#FF4B4B] hover:bg-[#FF4B4B]/5 active:border-b-2 active:translate-y-[2px] transition-all"><Trash2 size={24} /></button>
+           <button onClick={onReset} className="p-3 bg-white dark:bg-[#2A2B35] text-[#FF4B4B] rounded-2xl border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:border-[#FF4B4B] hover:bg-[#FF4B4B]/5 active:border-b-2 active:translate-y-[2px] transition-all"><Trash2 size={24} /></button>
         </div>
       </header>
 
       <main className="flex-1 p-4 md:p-8 grid lg:grid-cols-2 gap-8 max-w-7xl mx-auto w-full">
         {/* Players List */}
-        <section className="bg-white rounded-3xl border-2 border-[#E5E5E5] p-6 md:p-8 shadow-sm h-fit">
-           <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-[#E5E5E5]">
-             <h3 className="text-xl font-black uppercase text-[#4B4B4B] flex items-center gap-3">
+        <section className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 shadow-sm h-fit">
+           <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B]">
+             <h3 className="text-xl font-black uppercase text-white flex items-center gap-3">
                <Users size={24} className="text-[#1CB0F6]" />
-               {t.connectedPlayers} <span className="bg-[#E5E5E5] text-[#4B4B4B] px-3 py-1 rounded-xl text-sm">{players.length}</span>
+               {t.connectedPlayers} <span className="bg-[#E5E5E5] dark:bg-[#393A4B] text-white px-3 py-1 rounded-xl text-sm">{players.length}</span>
              </h3>
            </div>
            
            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
              {players.sort((a: any, b: any) => b.score - a.score).map((p, idx) => (
-               <div key={p.id} className="p-4 bg-white border-2 border-[#E5E5E5] rounded-2xl flex justify-between items-center hover:bg-[#F7F9FC] transition-all">
+               <div key={p.id} className="p-4 bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl flex justify-between items-center hover:bg-[#F7F9FC] dark:bg-[#181920] transition-all">
                  <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-full bg-[#E5E5E5] text-[#AFAFAF] flex items-center justify-center font-black text-xs">
+                    <div className="w-8 h-8 rounded-full bg-[#E5E5E5] dark:bg-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] flex items-center justify-center font-black text-xs">
                       {idx + 1}
                     </div>
                     <div>
-                      <p className="font-bold text-lg leading-none mb-2 text-[#4B4B4B]">{p.name}</p>
+                      <p className="font-bold text-lg leading-none mb-2 text-white">{p.name}</p>
                       <div className="flex gap-2">
                          {p.choices.map((c: string, i: number) => (
-                            <span key={i} className="text-[10px] bg-[#F7F9FC] border-2 border-[#E5E5E5] px-2 py-1 rounded-lg text-[#AFAFAF] uppercase font-black">{ROLES.find(r => r.id === c)?.id}</span>
+                            <span key={i} className="text-[10px] bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] px-2 py-1 rounded-lg text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-black">{ROLES.find(r => r.id === c)?.id}</span>
                          ))}
                       </div>
                     </div>
                  </div>
                  <div className="flex items-center gap-6">
                     <div className="text-right">
-                       <span className="text-lg font-black text-[#FFC800] block">{p.score} <span className="text-[#AFAFAF] text-sm">/ 5</span></span>
-                       <span className="text-[10px] text-[#AFAFAF] uppercase font-bold tracking-tighter">{(p.timeTaken/1000).toFixed(2)}s</span>
+                       <span className="text-lg font-black text-[#FFC800] block">{p.score} <span className="text-[#AFAFAF] dark:text-[#8C8F9F] text-sm">/ 5</span></span>
+                       <span className="text-[10px] text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-bold tracking-tighter">{(p.timeTaken/1000).toFixed(2)}s</span>
                     </div>
-                    <div className={`w-4 h-4 rounded-full border-2 border-white shadow-sm ${p.status === 'finished' ? 'bg-[#58CC02]' : p.status === 'quiz' ? 'bg-[#FF4B4B] animate-pulse' : 'bg-[#E5E5E5]'}`}></div>
+                    <div className={`w-4 h-4 rounded-full border-2 border-[#2A2B35] shadow-sm ${p.status === 'finished' ? 'bg-[#58CC02]' : p.status === 'quiz' ? 'bg-[#FF4B4B] animate-pulse' : 'bg-[#E5E5E5] dark:bg-[#393A4B]'}`}></div>
                  </div>
                </div>
              ))}
-             {players.length === 0 && <div className="text-center py-20 text-[#AFAFAF] font-bold uppercase tracking-widest text-sm">{t.noPlayers}</div>}
+             {players.length === 0 && <div className="text-center py-20 text-[#AFAFAF] dark:text-[#8C8F9F] font-bold uppercase tracking-widest text-sm">{t.noPlayers}</div>}
            </div>
         </section>
 
         {/* Dashboard / Analytics */}
         <section className="space-y-8 h-fit">
-           <div className="bg-white rounded-3xl border-2 border-[#E5E5E5] p-6 md:p-8 shadow-sm">
-             <h4 className="text-xs text-[#AFAFAF] font-extrabold uppercase tracking-widest mb-6 flex items-center gap-2">
+           <div className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 shadow-sm">
+             <h4 className="text-xs text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase tracking-widest mb-6 flex items-center gap-2">
                 <Settings size={16} /> {t.sysStatus}
              </h4>
              <div className="grid grid-cols-2 gap-4">
-                <div className="p-6 bg-[#F7F9FC] rounded-2xl border-2 border-[#E5E5E5]">
-                   <span className="text-[10px] text-[#AFAFAF] uppercase font-black block mb-2">{t.status}</span>
+                <div className="p-6 bg-[#F7F9FC] dark:bg-[#181920] rounded-2xl border-2 border-[#E5E5E5] dark:border-[#393A4B]">
+                   <span className="text-[10px] text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-black block mb-2">{t.status}</span>
                    <span className="text-2xl font-black uppercase text-[#1CB0F6]">{phase}</span>
                 </div>
-                <div className="p-6 bg-[#F7F9FC] rounded-2xl border-2 border-[#E5E5E5]">
-                   <span className="text-[10px] text-[#AFAFAF] uppercase font-black block mb-2">{t.finishedCount}</span>
+                <div className="p-6 bg-[#F7F9FC] dark:bg-[#181920] rounded-2xl border-2 border-[#E5E5E5] dark:border-[#393A4B]">
+                   <span className="text-[10px] text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-black block mb-2">{t.finishedCount}</span>
                    <span className="text-3xl font-black text-[#58CC02]">{players.filter((p: any) => p.status === 'finished').length}</span>
                 </div>
              </div>
            </div>
 
-           <div className="bg-white rounded-3xl border-2 border-[#E5E5E5] p-6 md:p-8 shadow-sm">
-              <h4 className="text-xs text-[#AFAFAF] font-extrabold uppercase tracking-widest mb-6 flex items-center gap-2">
+           <div className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 shadow-sm">
+              <h4 className="text-xs text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase tracking-widest mb-6 flex items-center gap-2">
                  <Users size={16} /> {t.roleDist}
               </h4>
               <div className="space-y-6">
@@ -701,9 +737,9 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
                       <div key={role.id}>
                          <div className="flex justify-between items-end mb-3">
                             <span className={`text-sm font-extrabold uppercase ${role.color.replace('text-', 'text-').replace('-500', '')}`}>{role.name[lang]}</span>
-                            <span className="text-xs font-bold text-[#AFAFAF]">{assigned} / {role.limit === 99 ? '∞' : role.limit}</span>
+                            <span className="text-xs font-bold text-[#AFAFAF] dark:text-[#8C8F9F]">{assigned} / {role.limit === 99 ? '∞' : role.limit}</span>
                          </div>
-                         <div className="h-3 bg-[#F7F9FC] rounded-full overflow-hidden border-2 border-[#E5E5E5]">
+                         <div className="h-3 bg-[#F7F9FC] dark:bg-[#181920] rounded-full overflow-hidden border-2 border-[#E5E5E5] dark:border-[#393A4B]">
                             <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(progress, 100)}%` }} className={`h-full ${role.color.replace('text-', 'bg-').replace('-500', '-500')}`} />
                          </div>
                       </div>
@@ -718,9 +754,9 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
         .animate-spin-slow { animation: spin 8s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #F7F9FC; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E5E5E5; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #AFAFAF; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #181920; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #393A4B; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #8C8F9F; }
       `}</style>
     </div>
   );

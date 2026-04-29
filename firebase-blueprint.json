@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "GameState": {
+      "title": "GameState",
+      "description": "Global game state.",
+      "type": "object",
+      "properties": {
+        "phase": {
+          "type": "string",
+          "enum": ["IDLE", "PREFERENCES", "LOBBY", "QUIZ", "RESULTS"],
+          "description": "The current phase of the game."
+        }
+      },
+      "required": ["phase"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A player in the game.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "choices": { "type": "array", "items": { "type": "string" } },
+        "score": { "type": "number" },
+        "timeTaken": { "type": "number" },
+        "assignedRole": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": ["waiting", "quiz", "finished"]
+        }
+      },
+      "required": ["id", "name", "choices", "score", "timeTaken", "status"]
+    }
+  },
+  "firestore": {
+    "/game/state": {
+      "schema": { "$ref": "#/entities/GameState" },
+      "description": "The current game state."
+    },
+    "/players/{playerId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Players in the game."
+    }
+  }
+}
