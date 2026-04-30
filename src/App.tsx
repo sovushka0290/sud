@@ -43,7 +43,7 @@ type Player = {
   score: number;
   timeTaken: number;
   assignedRole: string | null;
-  status: 'waiting' | 'quiz' | 'finished';
+  status: 'waiting' | 'quiz' | 'finished' | 'waiting_next';
   quizStep?: number;
 };
 
@@ -83,7 +83,7 @@ const ROLE_QUESTIONS: Record<string, any[]> = {
     { text: { kz: "Жалған жауап бергені үшін?", ru: "За дачу ложных показаний?" }, options: { kz: ["Қылмыстық жауапкершілік", "Сыйлық", "Ескерту", "Ештеңе жоқ"], ru: ["Уголовная ответственность", "Подарок", "Предупреждение", "Ничего"] }, correct: 0 },
     { text: { kz: "Дәйектемені бекітетін кім?", ru: "Кто дает клятву?" }, options: { kz: ["Куәгер", "Судья", "Көрермен", "Адвокат"], ru: ["Свидетель", "Судья", "Зритель", "Адвокат"] }, correct: 0 }
   ]
-};;
+};
 
 const TRANSLATIONS: Record<string, any> = {
   kz: {
@@ -225,14 +225,17 @@ export default function App() {
     unsubscribePlayers = onSnapshot(collection(db, 'players'), (snapshot) => {
       const pList: Player[] = [];
       snapshot.forEach(d => pList.push(d.data() as Player));
-      setPlayers(pList);
+      
+      setPlayers(prev => {
+        const isSame = prev.length === pList.length && prev.every((p, i) => JSON.stringify(p) === JSON.stringify(pList[i]));
+        return isSame ? prev : pList;
+      });
       
       if (!isEditingName) {
         const me = pList.find(p => p.id === guestId);
         if (me) {
           setPlayerData(prev => JSON.stringify(prev) === JSON.stringify(me) ? prev : me);
         } else if (playerData && !me) {
-          // If we were logged in but deleted
           setPlayerData(null);
         }
       }
@@ -361,24 +364,27 @@ export default function App() {
 
   const ControlsToggle = () => (
     <div className="fixed top-6 right-6 md:right-10 z-50 flex gap-2">
-      <button 
+      <motion.button 
+        whileTap={{ y: 2 }}
         onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
-        className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]`}
+        className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all border-2 border-b-4 bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]`}
       >
         {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-      </button>
-      <button 
+      </motion.button>
+      <motion.button 
+        whileTap={{ y: 2 }}
         onClick={() => setLang('kz')}
-        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'kz' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]'}`}
+        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 ${lang === 'kz' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]'}`}
       >
         ҚАЗ
-      </button>
-      <button 
+      </motion.button>
+      <motion.button 
+        whileTap={{ y: 2 }}
         onClick={() => setLang('ru')}
-        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 active:border-b-2 active:translate-y-[2px] ${lang === 'ru' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]'}`}
+        className={`px-4 py-2 rounded-xl text-sm font-extrabold transition-all border-2 border-b-4 ${lang === 'ru' ? 'bg-[#1CB0F6] border-[#1CB0F6] text-white' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:hover:bg-[#343541]'}`}
       >
         РУС
-      </button>
+      </motion.button>
     </div>
   );
 
@@ -407,7 +413,7 @@ export default function App() {
     const batch = writeBatch(db);
 
     for (const p of candidates) {
-      let assigned = 'witness';
+      let assigned = 'unassigned';
       for (const choice of p.choices) {
         if (roleAllocations[choice] < ROLES_LIMITS[choice]) {
           assigned = choice;
@@ -425,9 +431,18 @@ export default function App() {
   const resetGame = async () => {
     const batch = writeBatch(db);
     batch.update(doc(db, 'game', 'state'), { phase: 'IDLE' });
-    // DANGER: We delete all players manually or keep them? Instead of deleting, just reset the app by page reload and deleting players
     const qs = await getDocs(collection(db, 'players'));
-    qs.forEach(d => batch.delete(d.ref));
+    qs.forEach(d => {
+      // Keep players but reset their state
+      batch.update(d.ref, {
+        choices: [],
+        score: 0,
+        timeTaken: 0,
+        assignedRole: null,
+        status: 'waiting',
+        quizStep: 0
+      });
+    });
     await batch.commit();
   };
 
@@ -436,13 +451,13 @@ export default function App() {
   if (isAdmin) return <AdminPanel players={players} phase={phase} onPhaseChange={setGlobalPhase} onCalculate={calculateResults} onReset={resetGame} lang={lang} setLang={setLang} />;
 
   if (!playerData && !isAdmin) return (
-    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] flex flex-col items-center justify-center p-6 relative font-sans text-[#4B4B4B] dark:text-white">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] flex flex-col items-center justify-center p-6 relative font-sans text-[#3C3C3C] dark:text-[#E5E5E5]">
       <ControlsToggle />
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl max-w-md w-full shadow-sm text-center">
         <div className="w-24 h-24 mx-auto bg-[#1CB0F6]/10 rounded-3xl rotate-12 flex items-center justify-center mb-6 border-4 border-[#1CB0F6]/20">
           <Scale className="w-12 h-12 text-[#1CB0F6] -rotate-12" />
         </div>
-        <h2 className="text-3xl font-black mb-2 text-[#4B4B4B] dark:text-white">{t.title}</h2>
+        <h2 className="text-3xl font-black mb-2 text-[#3C3C3C] dark:text-[#E5E5E5]">{t.title}</h2>
         <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm mb-8 uppercase tracking-widest">{t.regTitle}</p>
         
         <div className="space-y-4">
@@ -452,22 +467,19 @@ export default function App() {
             value={userNameInput} 
             onChange={(e) => setUserNameInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-4 text-[#4B4B4B] dark:text-white focus:border-[#1CB0F6] focus:bg-white dark:bg-[#2A2B35] outline-none transition-all placeholder:text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold text-lg"
+            className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-4 text-[#3C3C3C] dark:text-[#E5E5E5] focus:border-[#1CB0F6] focus:bg-white dark:focus:bg-[#2A2B35] outline-none transition-all placeholder:text-[#AFAFAF] dark:placeholder:text-[#8C8F9F] font-extrabold text-lg"
           />
-          <button 
-            disabled={!userNameInput.trim()}
-            onClick={handleLogin} 
-            className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 active:border-b-0 disabled:active:border-b-4 disabled:active:translate-y-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-lg flex items-center justify-center gap-2 transition-all uppercase"
+          <motion.button whileTap={!userNameInput.trim() ? {} : { y: 4 }} disabled={!userNameInput.trim()} onClick={handleLogin} className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 text-white rounded-2xl font-extrabold text-lg flex items-center justify-center gap-2 transition-all uppercase"
           >
             {t.loginBtn}
-          </button>
+          </motion.button>
         </div>
       </motion.div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-[#4B4B4B] dark:text-white p-4 md:p-8 flex flex-col items-center justify-center relative font-sans">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-[#3C3C3C] dark:text-[#E5E5E5] p-4 md:p-8 flex flex-col items-center justify-center relative font-sans">
       <ControlsToggle />
       <AnimatePresence mode="wait">
         {phase === 'IDLE' && (
@@ -477,30 +489,25 @@ export default function App() {
             </div>
             <h2 className="text-3xl font-extrabold">{t.welcome},<br/><span className="text-[#1CB0F6]">{playerData.name}!</span></h2>
             <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-lg">{t.waitText}</p>
-            <button 
-              onClick={() => {
-                setPlayerData(null);
-                setUserNameInput(playerData.name);
-                setIsEditingName(true);
-              }}
-              className="mt-6 w-full px-6 py-4 bg-white dark:bg-[#2A2B35] hover:bg-[#F7F9FC] dark:hover:bg-[#343541] border-2 border-[#E5E5E5] dark:border-[#393A4B] hover:border-gray-300 border-b-4 active:border-b-2 active:translate-y-[2px] rounded-2xl text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase transition-all"
+            <motion.button whileTap={{ y: 2 }} onClick={() => { setPlayerData(null); setUserNameInput(playerData.name); setIsEditingName(true); }} className="mt-6 w-full px-6 py-4 bg-white dark:bg-[#2A2B35] hover:bg-[#F7F9FC] dark:hover:bg-[#343541] border-2 border-[#E5E5E5] dark:border-[#393A4B] hover:border-gray-300 border-b-4 rounded-2xl text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase transition-all"
             >
               {lang === 'kz' ? 'Атты өзгерту' : 'Изменить имя'}
-            </button>
+            </motion.button>
           </motion.div>
         )}
 
         {phase === 'PREFERENCES' && (
           <motion.div key="pref" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 rounded-3xl max-w-xl w-full shadow-sm">
-             <h3 className="text-2xl font-extrabold mb-2 text-center text-[#4B4B4B] dark:text-white">{t.chooseRoles}</h3>
+             <h3 className="text-2xl font-extrabold mb-2 text-center text-[#3C3C3C] dark:text-[#E5E5E5]">{t.chooseRoles}</h3>
              <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-center font-bold mb-8">{t.chooseSub}</p>
              
              <div className="grid gap-3 mb-8">
                {ROLES.map(r => {
                  const isSelected = selectedChoices.includes(r.id);
                  return (
-                 <button 
+                 <motion.button 
                   key={r.id}
+                  whileTap={{ y: 2 }}
                   disabled={playerData.choices.length > 0}
                   onClick={() => {
                     if (isSelected) setSelectedChoices(selectedChoices.filter(id => id !== r.id));
@@ -508,23 +515,23 @@ export default function App() {
                   }}
                   className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-between group
                     ${isSelected 
-                      ? 'bg-[#DDF4FF] border-[#1CB0F6] border-b-4 active:border-b-2 active:translate-y-[2px]' 
-                      : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:bg-[#181920] active:border-b-2 active:translate-y-[2px]'}
-                    ${playerData.choices.length > 0 ? 'opacity-70 pointer-events-none border-b-2 translate-y-[2px]' : ''}
+                      ? 'bg-[#DDF4FF] border-[#1CB0F6] border-b-4 text-[#1CB0F6]' 
+                      : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:bg-[#181920]'}
+                    ${playerData.choices.length > 0 ? 'opacity-70 pointer-events-none' : ''}
                   `}
                  >
                    <div className="flex items-center gap-4">
                       <div className={`p-3 rounded-2xl ${isSelected ? 'bg-white dark:bg-[#2A2B35] shadow-sm' : 'bg-[#F7F9FC] dark:bg-[#181920]'} ${r.color.replace('text-', 'text-').replace('-500', '-500')}`}>
                          <r.icon size={28} style={{ color: isSelected ? '#1CB0F6' : '#8C8F9F' }} />
                       </div>
-                      <span className={`font-extrabold text-lg ${isSelected ? 'text-[#1CB0F6]' : 'text-[#4B4B4B] dark:text-white'}`}>{r.name[lang]}</span>
+                      <span className={`font-extrabold text-lg ${isSelected ? 'text-[#1CB0F6]' : 'text-[#3C3C3C] dark:text-[#E5E5E5]'}`}>{r.name[lang]}</span>
                    </div>
                    {isSelected && (
                      <div className="w-8 h-8 rounded-full bg-[#1CB0F6] text-white flex items-center justify-center font-black text-sm shadow-sm">
                         {selectedChoices.indexOf(r.id) + 1}
                      </div>
                    )}
-                 </button>
+                 </motion.button>
                )})}
              </div>
 
@@ -536,13 +543,10 @@ export default function App() {
                   <span className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm">{t.dontLookAway}</span>
                </div>
              ) : (
-               <button 
-                disabled={selectedChoices.length < 3} 
-                onClick={handleChoicesSubmit}
-                className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] disabled:active:translate-y-0 disabled:active:border-b-4 border-b-4 active:border-b-0 active:translate-y-[4px] rounded-2xl text-white font-extrabold text-lg uppercase transition-all"
+               <motion.button whileTap={selectedChoices.length < 3 ? {} : { y: 4 }} disabled={selectedChoices.length < 3} onClick={handleChoicesSubmit} className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 rounded-2xl text-white font-extrabold text-lg uppercase transition-all"
                >
                  {t.sendChoice}
-               </button>
+               </motion.button>
              )}
           </motion.div>
         )}
@@ -552,24 +556,24 @@ export default function App() {
             <div className="w-32 h-32 mx-auto bg-[#FFC800]/20 rounded-full flex items-center justify-center mb-6 relative">
               <Timer className="w-16 h-16 text-[#FFC800] animate-spin-slow absolute" />
             </div>
-            <h2 className="text-3xl font-extrabold text-[#4B4B4B] dark:text-white">{t.quizPrep}</h2>
+            <h2 className="text-3xl font-extrabold text-[#3C3C3C] dark:text-[#E5E5E5]">{t.quizPrep}</h2>
             <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-lg font-bold">{t.quizPrepSub}</p>
             
             <div className="mt-8 space-y-4 w-full">
-              <h3 className="font-extrabold text-sm text-[#AFAFAF] uppercase tracking-wider">{lang === 'kz' ? 'Бәсекелестер (Конкуренттер)' : 'Конкуренты'}</h3>
+              <h3 className="font-extrabold text-sm text-[#AFAFAF] dark:text-[#8C8F9F] uppercase tracking-wider">{lang === 'kz' ? 'Бәсекелестер (Конкуренттер)' : 'Конкуренты'}</h3>
               {playerData.choices.map((roleId: string) => {
                  const roleInfo = ROLES.find(r => r.id === roleId);
                  const competitors = players.filter(p => p.id !== guestId && p.choices.includes(roleId));
                  return (
                     <div key={roleId} className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl p-4 text-left shadow-sm">
-                      <span className="font-extrabold text-[#4B4B4B] dark:text-white block mb-3 text-sm">{roleInfo?.name[lang]}</span>
+                      <span className="font-extrabold text-[#3C3C3C] dark:text-[#E5E5E5] block mb-3 text-sm">{roleInfo?.name[lang]}</span>
                       <div className="flex flex-wrap gap-2">
                         {competitors.length > 0 ? competitors.map(c => (
-                          <span key={c.id} className="inline-flex items-center bg-[#F7F9FC] dark:bg-[#181920] px-3 py-1.5 rounded-xl text-xs font-bold text-[#AFAFAF] border border-[#E5E5E5] dark:border-[#393A4B]">
+                          <span key={c.id} className="inline-flex items-center bg-[#F7F9FC] dark:bg-[#181920] px-3 py-1.5 rounded-xl text-xs font-bold text-[#AFAFAF] dark:text-[#8C8F9F] border border-[#E5E5E5] dark:border-[#393A4B]">
                             {c.name}
                           </span>
                         )) : (
-                          <span className="text-xs font-bold text-[#AFAFAF] italic">{lang === 'kz' ? 'Қарсыластар жоқ' : 'Нет конкурентов'}</span>
+                          <span className="text-xs font-bold text-[#AFAFAF] dark:text-[#8C8F9F] italic">{lang === 'kz' ? 'Қарсыластар жоқ' : 'Нет конкурентов'}</span>
                         )}
                       </div>
                     </div>
@@ -608,25 +612,26 @@ export default function App() {
                    </div>
                 </div>
                 
-                <h3 className="text-2xl md:text-3xl font-extrabold text-[#4B4B4B] dark:text-white mb-8 leading-relaxed">
+                <h3 className="text-2xl md:text-3xl font-extrabold text-[#3C3C3C] dark:text-[#E5E5E5] mb-8 leading-relaxed">
                   {myQuestions[quizStep].text[lang]}
                 </h3>
                 
                 <div className="grid gap-4">
                   {myQuestions[quizStep].options[lang].map((opt, i) => (
-                    <button 
+                    <motion.button 
                       key={i} 
+                      whileTap={{ y: 2 }} 
                       onClick={() => handleQuizAnswer(i)} 
-                      className="p-5 text-left bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:bg-[#181920] hover:border-[#1CB0F6] hover:text-[#1CB0F6] active:border-b-2 active:translate-y-[2px] rounded-2xl transition-all font-extrabold text-lg text-[#4B4B4B] dark:text-white"
+                      className="p-5 text-left bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:hover:bg-[#343541] hover:border-[#1CB0F6] hover:text-[#1CB0F6] rounded-2xl transition-all font-extrabold text-lg text-[#3C3C3C] dark:text-[#E5E5E5]"
                     >
                       {opt}
-                    </button>
+                    </motion.button>
                   ))}
                 </div>
               </div>
                 
                 <div className="mt-6 bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-5 rounded-3xl shadow-sm text-left">
-                   <div className="font-extrabold text-xs text-[#AFAFAF] mb-4 uppercase tracking-wider flex justify-between items-center">
+                   <div className="font-extrabold text-xs text-[#AFAFAF] dark:text-[#8C8F9F] mb-4 uppercase tracking-wider flex justify-between items-center">
                       <span>{lang === 'kz' ? 'Бәсекелестердің прогрессі:' : 'Прогресс конкурентов:'}</span>
                       <span className="text-[#1CB0F6]">{ROLES.find(r => r.id === playerData.choices[Math.floor(quizStep / 3)] || playerData.choices[0])?.name[lang]}</span>
                    </div>
@@ -634,18 +639,18 @@ export default function App() {
                      {(() => {
                         const currentRoleId = playerData.choices[Math.floor(quizStep / 3)] || playerData.choices[0];
                         const competitors = players.filter(p => p.id !== guestId && p.choices.includes(currentRoleId));
-                        if (competitors.length === 0) return <div className="text-sm font-bold text-[#AFAFAF] animate-pulse">{lang === 'kz' ? 'Қарсыластар жоқ' : 'Нет конкурентов'}</div>;
+                        if (competitors.length === 0) return <div className="text-sm font-bold text-[#AFAFAF] dark:text-[#8C8F9F] animate-pulse">{lang === 'kz' ? 'Қарсыластар жоқ' : 'Нет конкурентов'}</div>;
                         return competitors.map(c => {
                           const theirPct = c.status === 'finished' ? 100 : Math.round(((c.quizStep || 0) / 9) * 100);
                           return (
                             <div key={c.id} className="flex items-center gap-4">
-                              <span className="text-sm font-extrabold w-20 truncate text-[#4B4B4B] dark:text-white">{c.name}</span>
+                              <span className="text-sm font-extrabold w-20 truncate text-[#3C3C3C] dark:text-[#E5E5E5]">{c.name}</span>
                               <div className="flex-1 bg-[#F7F9FC] dark:bg-[#181920] h-3 rounded-full overflow-hidden border border-[#E5E5E5] dark:border-[#393A4B]">
                                  <div className="bg-[#1CB0F6] h-full rounded-full transition-all duration-500 relative overflow-hidden" style={{ width: `${theirPct}%` }}>
                                     <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]"></div>
                                  </div>
                               </div>
-                              <span className="text-xs font-bold text-[#AFAFAF] w-8 text-right">{theirPct}%</span>
+                              <span className="text-xs font-bold text-[#AFAFAF] dark:text-[#8C8F9F] w-8 text-right">{theirPct}%</span>
                             </div>
                           );
                         });
@@ -655,49 +660,103 @@ export default function App() {
               </>
             ) : (
               <div className="text-center pt-20">
-                 <button 
+                 <motion.button 
                    onClick={handleStartQuiz} 
-                   className="w-full max-w-sm mx-auto py-5 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 active:border-b-0 active:translate-y-[4px] text-white font-extrabold rounded-2xl text-2xl uppercase transition-all shadow-[0_4px_14px_rgba(255,75,75,0.4)]"
+                   whileTap={{ y: 4 }} className="w-full max-w-sm mx-auto py-5 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 text-white font-extrabold rounded-2xl text-2xl uppercase transition-all shadow-[0_4px_14px_rgba(255,75,75,0.4)]"
                  >
                    {t.startQuiz}
-                 </button>
+                 </motion.button>
               </div>
             )}
           </motion.div>
         )}
 
-        {phase === 'RESULTS' && playerData.assignedRole && (
-          <motion.div key="res" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-8 w-full max-w-md bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl shadow-sm">
-             <div className="w-32 h-32 rounded-full bg-[#1CB0F6]/10 mx-auto flex items-center justify-center border-4 border-[#1CB0F6]/20">
-                {(() => {
-                  const r = ROLES.find(r => r.id === playerData.assignedRole);
-                  return r ? <r.icon size={64} className="text-[#1CB0F6]" /> : null
-                })()}
-             </div>
-             
-             <div>
-                <h2 className="text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase tracking-widest text-sm mb-2">{t.assignedRoleLabel}</h2>
-                <h3 className="text-4xl font-black text-[#4B4B4B] dark:text-white">
-                  {ROLES.find(r => r.id === playerData.assignedRole)?.name[lang]}
-                </h3>
-             </div>
-             
-             <div className="bg-[#FFC800]/10 p-6 rounded-2xl border-2 border-[#FFC800]/30 flex flex-col items-center gap-2">
-                <Trophy className="w-10 h-10 text-[#FFC800]" />
-                <p className="text-[#4B4B4B] dark:text-white font-extrabold text-xl">{t.scoreLabel} <span className="text-[#FFC800]">{playerData.score} / 5</span></p>
-                <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-sm font-bold uppercase">{t.qualConfirmed}</p>
-             </div>
-          </motion.div>
+        
+        {phase === 'RESULTS' && playerData.status === 'waiting_next' && (
+           <motion.div key="waiting_next" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-8 w-full max-w-md bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl shadow-sm">
+              <div className="w-32 h-32 rounded-full bg-[#1CB0F6]/10 mx-auto flex items-center justify-center border-4 border-[#1CB0F6]/20">
+                 <Timer size={64} className="text-[#1CB0F6] animate-spin-slow" />
+              </div>
+              <div>
+                 <h3 className="text-2xl font-black text-[#3C3C3C] dark:text-[#E5E5E5] leading-tight">
+                   {lang === 'kz' ? 'Келесі ойынды күтудеміз...' : 'Ожидаем следующую игру...'}
+                 </h3>
+              </div>
+           </motion.div>
+        )}
+
+        {phase === 'RESULTS' && playerData.status !== 'waiting_next' && playerData.assignedRole === 'unassigned' && (
+           <motion.div key="unassigned" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-6 w-full max-w-md bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl shadow-sm">
+              <div className="w-32 h-32 rounded-full bg-[#FF4B4B]/10 mx-auto flex items-center justify-center border-4 border-[#FF4B4B]/20">
+                 <Users size={64} className="text-[#FF4B4B]" />
+              </div>
+              
+              <div>
+                 <h2 className="text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase tracking-widest text-sm mb-2">{lang === 'kz' ? 'Нәтиже' : 'Результат'}</h2>
+                 <h3 className="text-2xl font-black text-[#3C3C3C] dark:text-[#E5E5E5] leading-tight mb-4">
+                   {lang === 'kz' ? 'Қап! Сіз таңдаған рөлдер бос емес.' : 'Упс! Все желаемые роли заняты.'}
+                 </h3>
+                 <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold">
+                   {lang === 'kz' ? 'Куәгер бола аласыз немесе келесі ойынды күтуге болады.' : 'Вы можете стать свидетелем или подождать следующую игру.'}
+                 </p>
+              </div>
+
+              <div className="flex flex-col gap-4 w-full">
+                  <motion.button 
+                     whileTap={{ y: 4 }}
+                     onClick={async () => {
+                        await updateDoc(doc(db, 'players', guestId), { assignedRole: 'witness' });
+                     }}
+                     className="w-full py-4 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 text-white rounded-2xl font-extrabold text-lg transition-all uppercase"
+                  >
+                     {lang === 'kz' ? 'Куәгер болу' : 'Стать свидетелем'}
+                  </motion.button>
+                  <motion.button 
+                     whileTap={{ y: 4 }}
+                     onClick={async () => {
+                        await updateDoc(doc(db, 'players', guestId), { status: 'waiting_next' });
+                     }}
+                     className="w-full py-4 bg-white dark:bg-[#2A2B35] text-[#FF4B4B] hover:bg-[#FF4B4B]/5 border-[#E5E5E5] dark:border-[#393A4B] hover:border-[#FF4B4B] border-b-4 rounded-2xl font-extrabold text-lg transition-all uppercase"
+                  >
+                     {lang === 'kz' ? 'Келесі ойынды күту' : 'Ждать следующей игры'}
+                  </motion.button>
+              </div>
+           </motion.div>
+        )}
+
+        {phase === 'RESULTS' && playerData.assignedRole && playerData.assignedRole !== 'unassigned' && playerData.status !== 'waiting_next' && (
+           <motion.div key="res" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-8 w-full max-w-md bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl shadow-sm">
+              <div className="w-32 h-32 rounded-full bg-[#1CB0F6]/10 mx-auto flex items-center justify-center border-4 border-[#1CB0F6]/20">
+                 {(() => {
+                   const r = ROLES.find(r => r.id === playerData.assignedRole);
+                   return r ? <r.icon size={64} className="text-[#1CB0F6]" /> : null
+                 })()}
+              </div>
+              
+              <div>
+                 <h2 className="text-[#AFAFAF] dark:text-[#8C8F9F] font-extrabold uppercase tracking-widest text-sm mb-2">{t.assignedRoleLabel}</h2>
+                 <h3 className="text-4xl font-black text-[#3C3C3C] dark:text-[#E5E5E5]">
+                   {ROLES.find(r => r.id === playerData.assignedRole)?.name[lang]}
+                 </h3>
+              </div>
+              
+              <div className="bg-[#FFC800]/10 p-6 rounded-2xl border-2 border-[#FFC800]/30 flex flex-col items-center gap-2">
+                 <Trophy className="w-10 h-10 text-[#FFC800]" />
+                 <p className="text-[#3C3C3C] dark:text-[#E5E5E5] font-extrabold text-xl">{t.scoreLabel} <span className="text-[#FFC800]">{playerData.score} / 5</span></p>
+                 <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-sm font-bold uppercase">{t.qualConfirmed}</p>
+              </div>
+           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
 }
 
+
 function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang, setLang }: any) {
   const t = TRANSLATIONS[lang];
   return (
-    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-[#4B4B4B] dark:text-white flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-[#3C3C3C] dark:text-[#E5E5E5] flex flex-col font-sans">
       <header className="p-4 md:p-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B] flex justify-between items-center bg-white dark:bg-[#2A2B35] sticky top-0 z-20 shadow-sm flex-col md:flex-row gap-4">
         <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-4">
@@ -705,31 +764,33 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
               <Settings className="text-[#1CB0F6]" size={28} />
             </div>
             <div>
-              <h1 className="font-black uppercase tracking-widest text-[#4B4B4B] dark:text-white">{t.adminTitle}</h1>
+              <h1 className="font-black uppercase tracking-widest text-[#3C3C3C] dark:text-[#E5E5E5]">{t.adminTitle}</h1>
               <p className="text-[10px] text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-bold tracking-tighter">{t.adminSub}</p>
             </div>
           </div>
           <div className="flex gap-2">
-            <button 
+            <motion.button 
+              whileTap={{ y: 2 }}
               onClick={() => setLang('kz')}
-              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'kz' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:bg-[#181920]'}`}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 ${lang === 'kz' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:bg-[#181920]'}`}
             >
               ҚАЗ
-            </button>
-            <button 
+            </motion.button>
+            <motion.button 
+              whileTap={{ y: 2 }}
               onClick={() => setLang('ru')}
-              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 active:translate-y-[2px] active:border-b-0 ${lang === 'ru' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:bg-[#181920]'}`}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all border-b-2 ${lang === 'ru' ? 'bg-[#1CB0F6] text-white border-[#1899D6]' : 'bg-white dark:bg-[#2A2B35] border-[#E5E5E5] dark:border-[#393A4B] text-[#AFAFAF] dark:text-[#8C8F9F] hover:bg-[#F7F9FC] dark:bg-[#181920]'}`}
             >
               РУС
-            </button>
+            </motion.button>
           </div>
         </div>
         <div className="flex gap-3 flex-wrap md:flex-nowrap justify-center">
-           {phase === 'IDLE' && <button onClick={() => onPhaseChange('PREFERENCES')} className="px-6 py-3 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase1}</button>}
-           {phase === 'PREFERENCES' && <button onClick={() => onPhaseChange('LOBBY')} className="px-6 py-3 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase2}</button>}
-           {phase === 'LOBBY' && <button onClick={() => onPhaseChange('QUIZ')} className="px-6 py-3 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all animate-pulse">{t.phase3}</button>}
-           {phase === 'QUIZ' && <button onClick={onCalculate} className="px-6 py-3 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] border-b-4 active:border-b-0 active:translate-y-[4px] text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase4}</button>}
-           <button onClick={onReset} className="p-3 bg-white dark:bg-[#2A2B35] text-[#FF4B4B] rounded-2xl border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:border-[#FF4B4B] hover:bg-[#FF4B4B]/5 active:border-b-2 active:translate-y-[2px] transition-all"><Trash2 size={24} /></button>
+           {phase === 'IDLE' && <motion.button onClick={() => onPhaseChange('PREFERENCES')} whileTap={{ y: 4 }} className="px-6 py-3 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase1}</motion.button>}
+           {phase === 'PREFERENCES' && <motion.button onClick={() => onPhaseChange('LOBBY')} whileTap={{ y: 4 }} className="px-6 py-3 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase2}</motion.button>}
+           {phase === 'LOBBY' && <motion.button onClick={() => onPhaseChange('QUIZ')} whileTap={{ y: 4 }} className="px-6 py-3 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 text-white rounded-2xl font-extrabold text-sm uppercase transition-all animate-pulse">{t.phase3}</motion.button>}
+           {phase === 'QUIZ' && <motion.button onClick={onCalculate} whileTap={{ y: 4 }} className="px-6 py-3 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] border-b-4 text-white rounded-2xl font-extrabold text-sm uppercase transition-all">{t.phase4}</motion.button>}
+           <motion.button whileTap={{ scale: 0.95 }} onClick={onReset} className="p-3 bg-white dark:bg-[#2A2B35] text-[#FF4B4B] rounded-2xl border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:border-[#FF4B4B] hover:bg-[#FF4B4B]/5 transition-all"><Trash2 size={24} /></motion.button>
         </div>
       </header>
 
@@ -737,9 +798,9 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
         {/* Players List */}
         <section className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 shadow-sm h-fit">
            <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B]">
-             <h3 className="text-xl font-black uppercase text-[#4B4B4B] dark:text-white flex items-center gap-3">
+             <h3 className="text-xl font-black uppercase text-[#3C3C3C] dark:text-[#E5E5E5] flex items-center gap-3">
                <Users size={24} className="text-[#1CB0F6]" />
-               {t.connectedPlayers} <span className="bg-[#E5E5E5] dark:bg-[#393A4B] text-[#4B4B4B] dark:text-white px-3 py-1 rounded-xl text-sm">{players.length}</span>
+               {t.connectedPlayers} <span className="bg-[#E5E5E5] dark:bg-[#393A4B] text-[#3C3C3C] dark:text-[#E5E5E5] px-3 py-1 rounded-xl text-sm">{players.length}</span>
              </h3>
            </div>
            
@@ -751,7 +812,7 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
                       {idx + 1}
                     </div>
                     <div>
-                      <p className="font-bold text-lg leading-none mb-2 text-[#4B4B4B] dark:text-white">{p.name}</p>
+                      <p className="font-bold text-lg leading-none mb-2 text-[#3C3C3C] dark:text-[#E5E5E5]">{p.name}</p>
                       <div className="flex gap-2">
                          {p.choices.map((c: string, i: number) => (
                             <span key={i} className="text-[10px] bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] px-2 py-1 rounded-lg text-[#AFAFAF] dark:text-[#8C8F9F] uppercase font-black">{ROLES.find(r => r.id === c)?.id}</span>
