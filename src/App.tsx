@@ -221,9 +221,9 @@ export default function App() {
         setPhase(docSnap.data().phase as GamePhase);
       } else {
         // init if not exists
-        setDoc(doc(db, 'game', 'state'), { phase: 'IDLE' });
+        try { setDoc(doc(db, 'game', 'state'), { phase: 'IDLE' }); } catch(e){}
       }
-    });
+    }, (error) => { console.error("Snapshot error on game/state: ", error); });
 
     // Listen to Players Collection
     unsubscribePlayers = onSnapshot(collection(db, 'players'), (snapshot) => {
@@ -243,7 +243,7 @@ export default function App() {
           setPlayerData(null);
         }
       }
-    });
+    }, (error) => { console.error("Snapshot error on players: ", error); });
 
     return () => {
       if (unsubscribeState) unsubscribeState();

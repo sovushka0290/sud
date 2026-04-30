@@ -23,8 +23,10 @@ export const MiniGame: React.FC<MiniGameProps> = ({ guestId, lang }) => {
         setScoreRed(data.red || 0);
         setScoreBlue(data.blue || 0);
       } else {
-        setDoc(doc(db, 'game', 'minigame'), { red: 0, blue: 0 });
+        try { setDoc(doc(db, 'game', 'minigame'), { red: 0, blue: 0 }); } catch(e){}
       }
+    }, (error) => {
+      console.error("MiniGame onSnapshot error:", error);
     });
 
     const interval = setInterval(async () => {

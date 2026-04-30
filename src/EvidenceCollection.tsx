@@ -37,6 +37,8 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
         data.push({ id: doc.id, ...doc.data() } as Evidence);
       });
       setEvidenceList(data);
+    }, (error) => {
+      console.error("Evidence Collection onSnapshot Error:", error);
     });
     return () => unsub();
   }, []);
@@ -44,6 +46,11 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.size > 1024 * 1024) {
+      alert(lang === 'kz' ? 'Файл тым үлкен! 1 МБ-тан аз файл таңдаңыз.' : 'Файл слишком большой! Выберите файл менее 1 МБ.');
+      return;
+    }
 
     setFileName(file.name);
     const reader = new FileReader();
@@ -80,7 +87,7 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
           if (res.startsWith('data:image')) {
               img.src = res;
           } else {
-              setFileBase64(res); // if not image, just use base64 (might be big!)
+              setFileBase64(res);
           }
       }
     };
@@ -93,7 +100,7 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
     try {
       await addDoc(collection(db, 'evidence'), {
         playerId: guestId,
-        playerName,
+        playerName: lang === 'kz' ? 'Аноним' : 'Аноним',
         testimony: testimony.trim(),
         fileBase64,
         fileName,
@@ -104,6 +111,7 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
       setFileName(null);
     } catch (e) {
       console.error("Error adding evidence: ", e);
+      alert(e);
     } finally {
       setIsSubmitting(false);
     }
@@ -125,9 +133,9 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
                         <img src={ev.fileBase64} alt="Evidence" className="mt-2 rounded-xl max-h-48 object-cover border-2 border-black/10" />
                     )}
                     {ev.fileBase64 && !ev.fileBase64.startsWith('data:image') && (
-                        <div className="mt-2 text-xs font-bold bg-black/10 p-2 rounded-lg flex items-center gap-2">
+                        <a href={ev.fileBase64} download={ev.fileName || 'file'} className="mt-2 text-xs font-bold bg-black/10 hover:bg-black/20 p-2 rounded-lg flex items-center gap-2 transition-all w-max cursor-pointer">
                            <FileUp size={14} /> {ev.fileName}
-                        </div>
+                        </a>
                     )}
                 </motion.div>
             ))}
