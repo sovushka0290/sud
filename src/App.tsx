@@ -1,3 +1,5 @@
+import { MiniGame } from './MiniGame';
+import { EvidenceCollection } from './EvidenceCollection';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -55,6 +57,7 @@ const ROLES: Role[] = [
   { id: 'lawyer', name: { kz: 'Адвокат', ru: 'Адвокат' }, limit: 1, icon: UserRound, color: 'text-emerald-500' },
   { id: 'secretary', name: { kz: 'Сот мәжілісінің хатшысы', ru: 'Секретарь судебного заседания' }, limit: 1, icon: ScrollText, color: 'text-cyan-400' },
   { id: 'witness', name: { kz: 'Куәгер', ru: 'Свидетель' }, limit: 99, icon: Users, color: 'text-amber-500' },
+  { id: 'accused', name: { kz: 'Айыпталушы', ru: 'Подсудимый' }, limit: 1, icon: UserRound, color: 'text-purple-500' },
 ];
 
 const ROLE_QUESTIONS: Record<string, any[]> = {
@@ -98,11 +101,11 @@ const TRANSLATIONS: Record<string, any> = {
     choiceAccepted: 'Таңдау қабылданды',
     dontLookAway: 'ТЕЛЕФОННАН КӨЗ АЛМАҢЫЗ',
     sendChoice: 'ТАҢДАУДЫ ЖІБЕРУ',
-    quizPrep: 'Тестке дайындық',
-    quizPrepSub: 'Мұғалім тестті қосқанша күтіңіз. Сұрақтар қиын болады!',
+    quizPrep: 'Іспен танысу',
+    quizPrepSub: 'Бексананың ісі: мән-жайларды күтіңіз...',
     quizFinished: 'Сынақ аяқталды',
     quizFinishedSub: 'Біліміңіз жүйеге енгізілді. Мұғалім рөлдерді бөлгенше күтіңіз.',
-    startQuiz: 'СЫНАҚТЫ БАСТАУ',
+    startQuiz: 'АЙҒАҚ БЕРУГЕ КӨШУ',
     assignedRoleLabel: 'Берілген рөліңіз:',
     scoreLabel: 'Сынақ нәтижесі:',
     qualConfirmed: 'Біліктілігіңіз расталды',
@@ -110,7 +113,7 @@ const TRANSLATIONS: Record<string, any> = {
     adminSub: 'Нақты уақыттық мониторинг',
     phase1: '1. Таңдауды ашу',
     phase2: '2. Таңдауды жабу',
-    phase3: '3. Тестті бастау',
+    phase3: '3. Айғақ жинау',
     phase4: '4. Рөлдерді бөлу',
     connectedPlayers: 'Байланыстағы ойыншылар',
     noPlayers: 'Ешкім қосылған жоқ...',
@@ -131,11 +134,11 @@ const TRANSLATIONS: Record<string, any> = {
     choiceAccepted: 'Выбор принят',
     dontLookAway: 'НЕ СВОДИТЕ ГЛАЗ С ТЕЛЕФОНА',
     sendChoice: 'ОТПРАВИТЬ ВЫБОР',
-    quizPrep: 'Подготовка к тесту',
-    quizPrepSub: 'Ждите запуска теста учителем. Вопросы будут сложными!',
+    quizPrep: 'Ознакомление с делом',
+    quizPrepSub: 'Дело Бексаны: ждите начала сбора доказательств.',
     quizFinished: 'Тест завершен',
     quizFinishedSub: 'Ваши знания внесены в систему. Ждите распределения ролей.',
-    startQuiz: 'НАЧАТЬ ТЕСТ',
+    startQuiz: 'ПЕРЕЙТИ К ДАЧЕ ПОКАЗАНИЙ',
     assignedRoleLabel: 'Ваша роль:',
     scoreLabel: 'Результат теста:',
     qualConfirmed: 'Квалификация подтверждена',
@@ -143,7 +146,7 @@ const TRANSLATIONS: Record<string, any> = {
     adminSub: 'Мониторинг в реальном времени',
     phase1: '1. Открыть выбор',
     phase2: '2. Закрыть выбор',
-    phase3: '3. Начать тест',
+    phase3: '3. Сбор показаний',
     phase4: '4. Распределить роли',
     connectedPlayers: 'Подключенные игроки',
     noPlayers: 'Никто еще не подключился...',
@@ -183,6 +186,7 @@ export default function App() {
   
   // Local Entry State
   const [userNameInput, setUserNameInput] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
   const [selectedChoices, setSelectedChoices] = useState<string[]>([]);
   
   // Quiz State
@@ -282,6 +286,8 @@ export default function App() {
   // --- Handlers ---
 
   const handleLogin = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     if (!userNameInput.trim()) return;
     
     if (userNameInput === 'ADMIN_SUD') {
@@ -308,21 +314,29 @@ export default function App() {
       console.error("Login write failed", e);
       setPlayerData(null);
       alert(lang === 'kz' ? 'Жүйеге кіру қатесі!' : 'Ошибка входа в систему!');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
 
 
   const handleChoicesSubmit = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     if (selectedChoices.length < 3) return;
     try {
       await updateDoc(doc(db, 'players', guestId), { choices: selectedChoices });
     } catch (e) {
       console.error("Choices submit failed", e);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleStartQuiz = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     setQuizStep(0);
     setQuizScore(0);
     setQuizTimer(10);
@@ -331,10 +345,14 @@ export default function App() {
       await updateDoc(doc(db, 'players', guestId), { status: 'quiz', quizStep: 0, score: 0 });
     } catch (e) {
       console.error("Start quiz failed", e);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleQuizAnswer = async (index: number) => {
+    if (isProcessing || myQuestions.length === 0) return;
+    setIsProcessing(true);
     if (myQuestions.length === 0) return;
     const currentQ = myQuestions[quizStep];
     const correct = index === currentQ?.correct;
@@ -360,6 +378,7 @@ export default function App() {
         console.error("Quiz answer submit failed", e);
       }
     }
+    setTimeout(() => setIsProcessing(false), 300); // Small delay for smooth animation
   };
 
   const ControlsToggle = () => (
@@ -396,7 +415,7 @@ export default function App() {
 
   const calculateResults = async () => {
     const ROLES_LIMITS: Record<string, number> = {
-      judge: 1, prosecutor: 1, lawyer: 1, secretary: 1, witness: 99
+      judge: 1, prosecutor: 1, lawyer: 1, secretary: 1, accused: 1, witness: 99
     };
 
     const candidates = [...players]
@@ -407,7 +426,7 @@ export default function App() {
       });
 
     const roleAllocations: Record<string, number> = {
-      judge: 0, prosecutor: 0, lawyer: 0, secretary: 0, witness: 0
+      judge: 0, prosecutor: 0, lawyer: 0, secretary: 0, accused: 0, witness: 0
     };
 
     const batch = writeBatch(db);
@@ -469,7 +488,7 @@ export default function App() {
             onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-4 text-[#3C3C3C] dark:text-[#E5E5E5] focus:border-[#1CB0F6] focus:bg-white dark:focus:bg-[#2A2B35] outline-none transition-all placeholder:text-[#AFAFAF] dark:placeholder:text-[#8C8F9F] font-extrabold text-lg"
           />
-          <motion.button whileTap={!userNameInput.trim() ? {} : { y: 4 }} disabled={!userNameInput.trim()} onClick={handleLogin} className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 text-white rounded-2xl font-extrabold text-lg flex items-center justify-center gap-2 transition-all uppercase"
+          <motion.button whileTap={!userNameInput.trim() ? {} : { y: 4 }} disabled={!userNameInput.trim() || isProcessing} onClick={handleLogin} className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 text-white rounded-2xl font-extrabold text-lg flex items-center justify-center gap-2 transition-all uppercase"
           >
             {t.loginBtn}
           </motion.button>
@@ -493,6 +512,7 @@ export default function App() {
             >
               {lang === 'kz' ? 'Атты өзгерту' : 'Изменить имя'}
             </motion.button>
+            <MiniGame guestId={guestId} lang={lang} />
           </motion.div>
         )}
 
@@ -543,7 +563,7 @@ export default function App() {
                   <span className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm">{t.dontLookAway}</span>
                </div>
              ) : (
-               <motion.button whileTap={selectedChoices.length < 3 ? {} : { y: 4 }} disabled={selectedChoices.length < 3} onClick={handleChoicesSubmit} className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 rounded-2xl text-white font-extrabold text-lg uppercase transition-all"
+               <motion.button whileTap={selectedChoices.length < 3 ? {} : { y: 4 }} disabled={selectedChoices.length < 3 || isProcessing} onClick={handleChoicesSubmit} className="w-full py-4 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] disabled:bg-[#E5E5E5] dark:bg-[#393A4B] disabled:border-[#E5E5E5] dark:border-[#393A4B] disabled:text-[#AFAFAF] dark:text-[#8C8F9F] border-b-4 rounded-2xl text-white font-extrabold text-lg uppercase transition-all"
                >
                  {t.sendChoice}
                </motion.button>
@@ -580,98 +600,35 @@ export default function App() {
                  );
               })}
             </div>
+            <MiniGame guestId={guestId} lang={lang} />
           </motion.div>
         )}
 
         {phase === 'QUIZ' && (
-          <motion.div key="quiz" className="w-full max-w-2xl px-4">
-            {playerData.status === 'finished' ? (
-              <div className="text-center bg-white dark:bg-[#2A2B35] p-10 rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] shadow-sm">
-                 <div className="w-24 h-24 mx-auto bg-[#58CC02]/20 rounded-full flex items-center justify-center mb-6">
-                    <CheckCircle2 className="w-12 h-12 text-[#58CC02]" />
-                 </div>
-                 <h2 className="text-3xl font-extrabold mb-4 text-[#58CC02]">{t.quizFinished}</h2>
-                 <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-lg leading-relaxed">{t.quizFinishedSub}</p>
+          <motion.div key="evidence_phase" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-4xl mx-auto space-y-6">
+            <div className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                 <h2 className="text-2xl font-black text-[#FF4B4B] mb-2">{lang === 'kz' ? 'Айғақтар жинау' : 'Сбор доказательств'}</h2>
+                 <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm">
+                   {lang === 'kz' ? 'Бексананың ісі: барлық білетініңізді жазыңыз және дәлелдерді тіркеңіз.' : 'Дело Бексаны: опишите всё, что вы знаете, загрузите фото или видеоматериалы.'}
+                 </p>
               </div>
-            ) : playerData.status === 'quiz' ? (
-              <>
-                <div className="bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-10 rounded-3xl shadow-sm relative overflow-hidden">
-                <div className="w-full bg-[#E5E5E5] dark:bg-[#393A4B] h-4 rounded-full mb-8 overflow-hidden">
-                   <div 
-                     className="h-full bg-[#FF4B4B] rounded-full transition-all duration-1000 ease-linear flex items-center justify-end px-2 text-[10px] font-extrabold text-white"
-                     style={{ width: `${(quizTimer/10)*100}%` }}
-                   ></div>
-                </div>
-                
-                <div className="flex justify-between items-center mb-8">
-                   <span className="font-extrabold text-[#AFAFAF] dark:text-[#8C8F9F] text-lg">
-                      <span className="text-[#1CB0F6]">{quizStep + 1}</span> / {myQuestions.length}
-                   </span>
-                   <div className="text-3xl font-black text-[#FF4B4B] tabular-nums flex items-center gap-2">
-                     <Timer className="w-8 h-8" /> {quizTimer}s
-                   </div>
-                </div>
-                
-                <h3 className="text-2xl md:text-3xl font-extrabold text-[#3C3C3C] dark:text-[#E5E5E5] mb-8 leading-relaxed">
-                  {myQuestions[quizStep].text[lang]}
-                </h3>
-                
-                <div className="grid gap-4">
-                  {myQuestions[quizStep].options[lang].map((opt, i) => (
-                    <motion.button 
-                      key={i} 
-                      whileTap={{ y: 2 }} 
-                      onClick={() => handleQuizAnswer(i)} 
-                      className="p-5 text-left bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#F7F9FC] dark:hover:bg-[#343541] hover:border-[#1CB0F6] hover:text-[#1CB0F6] rounded-2xl transition-all font-extrabold text-lg text-[#3C3C3C] dark:text-[#E5E5E5]"
-                    >
-                      {opt}
-                    </motion.button>
-                  ))}
-                </div>
-              </div>
-                
-                <div className="mt-6 bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-5 rounded-3xl shadow-sm text-left">
-                   <div className="font-extrabold text-xs text-[#AFAFAF] dark:text-[#8C8F9F] mb-4 uppercase tracking-wider flex justify-between items-center">
-                      <span>{lang === 'kz' ? 'Бәсекелестердің прогрессі:' : 'Прогресс конкурентов:'}</span>
-                      <span className="text-[#1CB0F6]">{ROLES.find(r => r.id === playerData.choices[Math.floor(quizStep / 3)] || playerData.choices[0])?.name[lang]}</span>
-                   </div>
-                   <div className="space-y-4">
-                     {(() => {
-                        const currentRoleId = playerData.choices[Math.floor(quizStep / 3)] || playerData.choices[0];
-                        const competitors = players.filter(p => p.id !== guestId && p.choices.includes(currentRoleId));
-                        if (competitors.length === 0) return <div className="text-sm font-bold text-[#AFAFAF] dark:text-[#8C8F9F] animate-pulse">{lang === 'kz' ? 'Қарсыластар жоқ' : 'Нет конкурентов'}</div>;
-                        return competitors.map(c => {
-                          const theirPct = c.status === 'finished' ? 100 : Math.round(((c.quizStep || 0) / 9) * 100);
-                          return (
-                            <div key={c.id} className="flex items-center gap-4">
-                              <span className="text-sm font-extrabold w-20 truncate text-[#3C3C3C] dark:text-[#E5E5E5]">{c.name}</span>
-                              <div className="flex-1 bg-[#F7F9FC] dark:bg-[#181920] h-3 rounded-full overflow-hidden border border-[#E5E5E5] dark:border-[#393A4B]">
-                                 <div className="bg-[#1CB0F6] h-full rounded-full transition-all duration-500 relative overflow-hidden" style={{ width: `${theirPct}%` }}>
-                                    <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]"></div>
-                                 </div>
-                              </div>
-                              <span className="text-xs font-bold text-[#AFAFAF] dark:text-[#8C8F9F] w-8 text-right">{theirPct}%</span>
-                            </div>
-                          );
-                        });
-                     })()}
-                   </div>
-                </div>
-              </>
-            ) : (
-              <div className="text-center pt-20">
-                 <motion.button 
-                   onClick={handleStartQuiz} 
-                   whileTap={{ y: 4 }} className="w-full max-w-sm mx-auto py-5 bg-[#FF4B4B] hover:bg-[#E54545] border-[#FF4B4B] hover:border-[#E54545] border-b-4 text-white font-extrabold rounded-2xl text-2xl uppercase transition-all shadow-[0_4px_14px_rgba(255,75,75,0.4)]"
-                 >
-                   {t.startQuiz}
-                 </motion.button>
-              </div>
-            )}
+              <motion.button 
+                whileTap={{ y: 2 }} onClick={async () => { await updateDoc(doc(db, 'players', guestId), { status: 'finished' }); }}
+                className="w-full md:w-auto px-6 py-4 bg-[#1CB0F6] hover:bg-[#1899D6] border-[#1CB0F6] hover:border-[#1899D6] border-b-4 text-white font-extrabold rounded-2xl transition-all uppercase whitespace-nowrap"
+              >
+                {lang === 'kz' ? 'Куәлікті аяқтау' : 'Завершить показания'}
+              </motion.button>
+            </div>
+            
+            <EvidenceCollection guestId={guestId} playerName={playerData.name} lang={lang} t={t} />
+
+            <div className="mt-8">
+              <MiniGame guestId={guestId} lang={lang} />
+            </div>
           </motion.div>
         )}
 
-        
         {phase === 'RESULTS' && playerData.status === 'waiting_next' && (
            <motion.div key="waiting_next" initial={{ scale: 0.8, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="text-center space-y-8 w-full max-w-md bg-white dark:bg-[#2A2B35] border-2 border-[#E5E5E5] dark:border-[#393A4B] p-8 rounded-3xl shadow-sm">
               <div className="w-32 h-32 rounded-full bg-[#1CB0F6]/10 mx-auto flex items-center justify-center border-4 border-[#1CB0F6]/20">
@@ -721,6 +678,7 @@ export default function App() {
                      {lang === 'kz' ? 'Келесі ойынды күту' : 'Ждать следующей игры'}
                   </motion.button>
               </div>
+              <MiniGame guestId={guestId} lang={lang} />
            </motion.div>
         )}
 

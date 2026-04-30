@@ -25,7 +25,14 @@ service cloud.firestore {
       // To prevent errors simply open it for the game functionality.
     }
     
-    // Auth test ping
+    match /evidence/{evidenceId} {
+      allow read, write: if true;
+    }
+    
+    match /game/minigame {
+      allow read, write: if true;
+    }
+    
     match /test/connection {
       allow read: if true;
     }
