@@ -9,6 +9,7 @@ interface EvidenceCollectionProps {
   playerName: string;
   lang: 'kz' | 'ru';
   t: any;
+  config: { victimName: string; caseType: string };
 }
 
 interface Evidence {
@@ -21,7 +22,7 @@ interface Evidence {
   timestamp: any;
 }
 
-export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId, playerName, lang, t }) => {
+export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId, playerName, lang, t, config }) => {
   const [evidenceList, setEvidenceList] = useState<Evidence[]>([]);
   const [testimony, setTestimony] = useState('');
   const [fileBase64, setFileBase64] = useState<string | null>(null);
@@ -30,11 +31,16 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'evidence'), orderBy('timestamp', 'asc'));
+    const q = collection(db, 'evidence');
     const unsub = onSnapshot(q, (snapshot) => {
       const data: Evidence[] = [];
       snapshot.forEach(doc => {
         data.push({ id: doc.id, ...doc.data() } as Evidence);
+      });
+      data.sort((a, b) => {
+        const t1 = a.timestamp?.toMillis ? a.timestamp.toMillis() : (a.timestamp || 0);
+        const t2 = b.timestamp?.toMillis ? b.timestamp.toMillis() : (b.timestamp || 0);
+        return t1 - t2;
       });
       setEvidenceList(data);
     }, (error) => {
@@ -100,7 +106,7 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
     try {
       await addDoc(collection(db, 'evidence'), {
         playerId: guestId,
-        playerName: lang === 'kz' ? 'Аноним' : 'Аноним',
+        playerName: playerName || (lang === 'kz' ? 'Аноним' : 'Аноним'),
         testimony: testimony.trim(),
         fileBase64,
         fileName,
@@ -109,9 +115,9 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
       setTestimony('');
       setFileBase64(null);
       setFileName(null);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error adding evidence: ", e);
-      alert(e);
+      alert(e?.message || e);
     } finally {
       setIsSubmitting(false);
     }
@@ -120,7 +126,11 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
   return (
     <div className="flex flex-col h-[70vh] bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] shadow-sm overflow-hidden">
         <div className="p-4 border-b-2 border-[#E5E5E5] dark:border-[#393A4B] bg-[#F7F9FC] dark:bg-[#181920]">
-            <h3 className="text-xl font-black text-[#3C3C3C] dark:text-[#E5E5E5] uppercase">{lang === 'kz' ? 'Бексана ісі: Магитериалдар мен айғақтар' : 'Дело Бексаны: Доказательства и показания'}</h3>
+            <h3 className="text-xl font-black text-[#3C3C3C] dark:text-[#E5E5E5] uppercase">
+              {lang === 'kz' 
+               ? `${config?.victimName || '...'} ісі: Материалдар мен айғақтар` 
+               : `Дело ${config?.victimName || '...'}: Материалы и показания`}
+            </h3>
             <p className="text-sm font-bold text-[#AFAFAF] dark:text-[#8C8F9F]">{lang === 'kz' ? 'Бәрі көре алатын ортақ іс материалдары' : 'Общие материалы дела, видимые всем'}</p>
         </div>
 
@@ -155,9 +165,12 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
             )}
             <div className="flex gap-2">
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
-                <motion.button whileTap={{ y: 2 }} onClick={() => fileInputRef.current?.click()} className="p-4 rounded-2xl bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#E5E5E5] text-[#AFAFAF] transition-all">
-                    <FileUp size={24} className="text-[#1CB0F6]"/>
-                </motion.button>
+                <div className="flex flex-col items-center">
+                  <motion.button whileTap={{ y: 2 }} onClick={() => fileInputRef.current?.click()} className="p-4 rounded-2xl bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] border-b-4 hover:bg-[#E5E5E5] text-[#AFAFAF] transition-all">
+                      <FileUp size={24} className="text-[#1CB0F6]"/>
+                  </motion.button>
+                  <span className="text-[10px] text-[#AFAFAF] mt-1 font-bold">Max 1MB</span>
+                </div>
                 <textarea 
                     value={testimony} 
                     onChange={e => setTestimony(e.target.value)} 

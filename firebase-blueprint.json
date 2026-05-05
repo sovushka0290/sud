@@ -30,12 +30,26 @@
         }
       },
       "required": ["id", "name", "choices", "score", "timeTaken", "status"]
+    },
+    "GameConfig": {
+      "title": "GameConfig",
+      "description": "Game configuration like victim name and case type.",
+      "type": "object",
+      "properties": {
+        "victimName": { "type": "string" },
+        "caseType": { "type": "string" }
+      },
+      "required": ["victimName", "caseType"]
     }
   },
   "firestore": {
     "/game/state": {
       "schema": { "$ref": "#/entities/GameState" },
       "description": "The current game state."
+    },
+    "/game/config": {
+      "schema": { "$ref": "#/entities/GameConfig" },
+      "description": "The current game config."
     },
     "/players/{playerId}": {
       "schema": { "$ref": "#/entities/Player" },

@@ -17,6 +17,10 @@ service cloud.firestore {
       allow write: if true; // anyone can be admin for now to keep things working in prototype
     }
     
+    match /game/config {
+      allow read, write: if true;
+    }
+    
     match /players/{playerId} {
       allow read: if true;
       // Allow creation of player and updates

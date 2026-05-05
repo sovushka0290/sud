@@ -51,6 +51,20 @@ type Player = {
 
 type GamePhase = 'IDLE' | 'PREFERENCES' | 'LOBBY' | 'QUIZ' | 'RESULTS';
 
+type GameConfig = {
+  victimName: string;
+  caseType: string;
+};
+
+const CASE_TYPES = [
+  { id: 'murder', kz: 'Кісі өлтіру', ru: 'Убийство' },
+  { id: 'theft', kz: 'Ұрлық', ru: 'Кража' },
+  { id: 'fraud', kz: 'Алаяқтық', ru: 'Мошенничество' },
+  { id: 'robbery', kz: 'Тонау', ru: 'Грабеж' },
+  { id: 'hooliganism', kz: 'Бұзақылық', ru: 'Хулиганство' },
+  { id: 'accident', kz: 'Жол-көлік оқиғасы', ru: 'ДТП' },
+];
+
 const ROLES: Role[] = [
   { id: 'judge', name: { kz: 'Төрағалық етуші (Судья)', ru: 'Председательствующий (Судья)' }, limit: 1, icon: Gavel, color: 'text-blue-500' },
   { id: 'prosecutor', name: { kz: 'Прокурор', ru: 'Прокурор' }, limit: 1, icon: ShieldCheck, color: 'text-red-500' },
@@ -102,7 +116,13 @@ const TRANSLATIONS: Record<string, any> = {
     dontLookAway: 'ТЕЛЕФОННАН КӨЗ АЛМАҢЫЗ',
     sendChoice: 'ТАҢДАУДЫ ЖІБЕРУ',
     quizPrep: 'Іспен танысу',
-    quizPrepSub: 'Бексананың ісі: мән-жайларды күтіңіз...',
+    quizPrepSub: (config: GameConfig, lang: 'kz' | 'ru') => {
+      if (!config) return lang === 'kz' ? '...' : '...';
+      const typeName = CASE_TYPES.find(c => c.id === config.caseType)?.[lang] || config.caseType || '...';
+      return lang === 'kz' 
+        ? `${config.victimName || '...'} ісі (${typeName}) бойынша мән-жайларды күтіңіз...`
+        : `Дело по факту ${typeName} (${config.victimName || '...'}): ждите начала сбора доказательств.`;
+    },
     quizFinished: 'Сынақ аяқталды',
     quizFinishedSub: 'Біліміңіз жүйеге енгізілді. Мұғалім рөлдерді бөлгенше күтіңіз.',
     startQuiz: 'АЙҒАҚ БЕРУГЕ КӨШУ',
@@ -120,7 +140,10 @@ const TRANSLATIONS: Record<string, any> = {
     sysStatus: 'Жүйелік статус',
     status: 'Мәртебе',
     finishedCount: 'Аяқтағандар',
-    roleDist: 'Рөлдердің бөлінуі'
+    roleDist: 'Рөлдердің бөлінуі',
+    configTitle: 'Іс параметрлері',
+    victimLabel: 'Жәбірленуші аты-жөні',
+    caseTypeLabel: 'Іс санаты'
   },
   ru: {
     title: 'Судебная система',
@@ -135,7 +158,13 @@ const TRANSLATIONS: Record<string, any> = {
     dontLookAway: 'НЕ СВОДИТЕ ГЛАЗ С ТЕЛЕФОНА',
     sendChoice: 'ОТПРАВИТЬ ВЫБОР',
     quizPrep: 'Ознакомление с делом',
-    quizPrepSub: 'Дело Бексаны: ждите начала сбора доказательств.',
+    quizPrepSub: (config: GameConfig, lang: 'kz' | 'ru') => {
+      if (!config) return lang === 'kz' ? '...' : '...';
+      const typeName = CASE_TYPES.find(c => c.id === config.caseType)?.[lang] || config.caseType || '...';
+      return lang === 'kz' 
+        ? `${config.victimName || '...'} ісі (${typeName}) бойынша мән-жайларды күтіңіз...`
+        : `Дело по факту ${typeName} (${config.victimName || '...'}): ждите начала сбора доказательств.`;
+    },
     quizFinished: 'Тест завершен',
     quizFinishedSub: 'Ваши знания внесены в систему. Ждите распределения ролей.',
     startQuiz: 'ПЕРЕЙТИ К ДАЧЕ ПОКАЗАНИЙ',
@@ -153,7 +182,10 @@ const TRANSLATIONS: Record<string, any> = {
     sysStatus: 'Статус системы',
     status: 'Статус',
     finishedCount: 'Завершили',
-    roleDist: 'Распределение ролей'
+    roleDist: 'Распределение ролей',
+    configTitle: 'Параметры дела',
+    victimLabel: 'Имя жертвы/потерпевшего',
+    caseTypeLabel: 'Категория дела'
   }
 };
 
@@ -181,6 +213,7 @@ export default function App() {
     return playerData.choices.flatMap(roleId => ROLE_QUESTIONS[roleId] || []);
   }, [playerData?.choices]);
   const [phase, setPhase] = useState<GamePhase>('IDLE');
+  const [caseConfig, setCaseConfig] = useState<GameConfig>({ victimName: '...', caseType: '...' });
   const [players, setPlayers] = useState<Player[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   
@@ -224,6 +257,15 @@ export default function App() {
         try { setDoc(doc(db, 'game', 'state'), { phase: 'IDLE' }); } catch(e){}
       }
     }, (error) => { console.error("Snapshot error on game/state: ", error); });
+
+    const unsubscribeConfig = onSnapshot(doc(db, 'game', 'config'), (docSnap) => {
+      if (docSnap.exists()) {
+        setCaseConfig(docSnap.data() as GameConfig);
+      } else {
+        const initialConfig = { victimName: 'Гульжаухар', caseType: 'murder' };
+        try { setDoc(doc(db, 'game', 'config'), initialConfig); } catch(e){}
+      }
+    });
 
     // Listen to Players Collection
     unsubscribePlayers = onSnapshot(collection(db, 'players'), (snapshot) => {
@@ -450,6 +492,13 @@ export default function App() {
   const resetGame = async () => {
     const batch = writeBatch(db);
     batch.update(doc(db, 'game', 'state'), { phase: 'IDLE' });
+    
+    // Reset config? User asked to "all clear", maybe victim name should stay but case could reset.
+    // Or just clear everything except the config itself, but maybe reset config to defaults.
+    // Actually, user said "let's clear everything and so victim's name could be changed in admin".
+    // I'll keep the config but clear evidence.
+
+
     const qs = await getDocs(collection(db, 'players'));
     qs.forEach(d => {
       // Keep players but reset their state
@@ -457,17 +506,31 @@ export default function App() {
         choices: [],
         score: 0,
         timeTaken: 0,
-        assignedRole: null,
+        assignedRole: 'unassigned',
         status: 'waiting',
         quizStep: 0
       });
     });
+    
+    // Clear minigame
+    try {
+      batch.update(doc(db, 'game', 'minigame'), { red: 0, blue: 0 });
+    } catch(e) {}
+
     await batch.commit();
+
+    // Clear evidence
+    try {
+      const evQs = await getDocs(collection(db, 'evidence'));
+      const evBatch = writeBatch(db);
+      evQs.forEach(d => evBatch.delete(d.ref));
+      await evBatch.commit();
+    } catch(e) {}
   };
 
   // --- UI Components ---
 
-  if (isAdmin) return <AdminPanel players={players} phase={phase} onPhaseChange={setGlobalPhase} onCalculate={calculateResults} onReset={resetGame} lang={lang} setLang={setLang} />;
+  if (isAdmin) return <AdminPanel players={players} phase={phase} onPhaseChange={setGlobalPhase} onCalculate={calculateResults} onReset={resetGame} lang={lang} setLang={setLang} config={caseConfig} />;
 
   if (!playerData && !isAdmin) return (
     <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] flex flex-col items-center justify-center p-6 relative font-sans text-[#3C3C3C] dark:text-[#E5E5E5]">
@@ -577,7 +640,7 @@ export default function App() {
               <Timer className="w-16 h-16 text-[#FFC800] animate-spin-slow absolute" />
             </div>
             <h2 className="text-3xl font-extrabold text-[#3C3C3C] dark:text-[#E5E5E5]">{t.quizPrep}</h2>
-            <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-lg font-bold">{t.quizPrepSub}</p>
+            <p className="text-[#AFAFAF] dark:text-[#8C8F9F] text-lg font-bold">{t.quizPrepSub(caseConfig, lang)}</p>
             
             <div className="mt-8 space-y-4 w-full">
               <h3 className="font-extrabold text-sm text-[#AFAFAF] dark:text-[#8C8F9F] uppercase tracking-wider">{lang === 'kz' ? 'Бәсекелестер (Конкуренттер)' : 'Конкуренты'}</h3>
@@ -610,7 +673,9 @@ export default function App() {
               <div>
                  <h2 className="text-2xl font-black text-[#FF4B4B] mb-2">{lang === 'kz' ? 'Айғақтар жинау' : 'Сбор доказательств'}</h2>
                  <p className="text-[#AFAFAF] dark:text-[#8C8F9F] font-bold text-sm">
-                   {lang === 'kz' ? 'Бексананың ісі: барлық білетініңізді жазыңыз және дәлелдерді тіркеңіз.' : 'Дело Бексаны: опишите всё, что вы знаете, загрузите фото или видеоматериалы.'}
+                   {lang === 'kz' 
+                    ? `${caseConfig?.victimName || '...'} ісі: барлық білетініңізді жазыңыз және дәлелдерді тіркеңіз.` 
+                    : `Дело по факту ${CASE_TYPES.find(c => c.id === caseConfig?.caseType)?.[lang] || caseConfig?.caseType || '...'} (${caseConfig?.victimName || '...'}): опишите всё, что вы знаете, загрузите фото или видеоматериалы.`}
                  </p>
               </div>
               <motion.button 
@@ -621,7 +686,7 @@ export default function App() {
               </motion.button>
             </div>
             
-            <EvidenceCollection guestId={guestId} playerName={playerData.name} lang={lang} t={t} />
+            
 
             <div className="mt-8">
               <MiniGame guestId={guestId} lang={lang} />
@@ -706,13 +771,32 @@ export default function App() {
            </motion.div>
         )}
       </AnimatePresence>
+      {playerData && (
+        <div className="w-full max-w-4xl mt-12 animate-fade-in">
+          <EvidenceCollection guestId={guestId} playerName={playerData.name} lang={lang} t={t} config={caseConfig} />
+        </div>
+      )}
     </div>
   );
 }
 
 
-function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang, setLang }: any) {
+function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang, setLang, config }: any) {
   const t = TRANSLATIONS[lang];
+  const [victimName, setVictimName] = useState(config?.victimName || '');
+  const [caseType, setCaseType] = useState(config?.caseType || 'murder');
+
+  useEffect(() => {
+    if (config) {
+      setVictimName(config.victimName || '');
+      setCaseType(config.caseType || 'murder');
+    }
+  }, [config]);
+
+  const saveConfig = async () => {
+    await updateDoc(doc(db, 'game', 'config'), { victimName, caseType });
+  };
+
   return (
     <div className="min-h-screen bg-[#F7F9FC] dark:bg-[#181920] text-[#3C3C3C] dark:text-[#E5E5E5] flex flex-col font-sans">
       <header className="p-4 md:p-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B] flex justify-between items-center bg-white dark:bg-[#2A2B35] sticky top-0 z-20 shadow-sm flex-col md:flex-row gap-4">
@@ -752,7 +836,48 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
         </div>
       </header>
 
-      <main className="flex-1 p-4 md:p-8 grid lg:grid-cols-2 gap-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-4 md:p-8 flex flex-col gap-8 max-w-7xl mx-auto w-full">
+        {/* Case Config Section */}
+        <section className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 shadow-sm">
+           <h3 className="text-xl font-black uppercase text-[#3C3C3C] dark:text-[#E5E5E5] mb-6 flex items-center gap-3 border-b-2 border-[#E5E5E5] dark:border-[#393A4B] pb-4">
+             <Trophy size={24} className="text-[#FFC800]" />
+             {t.configTitle}
+           </h3>
+           <div className="grid md:grid-cols-2 gap-6 items-end">
+              <div className="space-y-2">
+                 <label className="text-xs font-black uppercase text-[#AFAFAF] dark:text-[#8C8F9F] px-2">{t.victimLabel}</label>
+                 <input 
+                    type="text" 
+                    value={victimName}
+                    onChange={e => setVictimName(e.target.value)}
+                    className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-3 text-lg font-bold outline-none focus:border-[#1CB0F6]"
+                 />
+              </div>
+              <div className="space-y-2">
+                 <label className="text-xs font-black uppercase text-[#AFAFAF] dark:text-[#8C8F9F] px-2">{t.caseTypeLabel}</label>
+                 <div className="flex gap-2">
+                    <select 
+                        value={caseType}
+                        onChange={e => setCaseType(e.target.value)}
+                        className="flex-1 bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl px-6 py-3 text-lg font-bold outline-none focus:border-[#1CB0F6] appearance-none"
+                    >
+                        {CASE_TYPES.map(c => (
+                            <option key={c.id} value={c.id}>{c[lang]}</option>
+                        ))}
+                    </select>
+                    <motion.button 
+                        whileTap={{ y: 2 }}
+                        onClick={saveConfig}
+                        className="px-6 py-3 bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] border-b-4 text-white rounded-2xl font-black uppercase"
+                    >
+                        Save
+                    </motion.button>
+                 </div>
+              </div>
+           </div>
+        </section>
+
+        <div className="grid lg:grid-cols-2 gap-8 w-full">
         {/* Players List */}
         <section className="bg-white dark:bg-[#2A2B35] rounded-3xl border-2 border-[#E5E5E5] dark:border-[#393A4B] p-6 md:p-8 shadow-sm h-fit">
            <div className="flex justify-between items-center mb-6 pb-6 border-b-2 border-[#E5E5E5] dark:border-[#393A4B]">
@@ -832,6 +957,10 @@ function AdminPanel({ players, phase, onPhaseChange, onCalculate, onReset, lang,
               </div>
            </div>
         </section>
+        </div>
+        <div className="w-full mt-4">
+           <EvidenceCollection guestId="admin" playerName="Admin" lang={lang} t={{}} config={config} />
+        </div>
       </main>
       
       <style>{`
