@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase';
 import { FileUp, Image as ImageIcon, Send, MessageSquare } from 'lucide-react';
+import { QUESTIONS } from './questions';
 
 interface EvidenceCollectionProps {
   guestId: string;
@@ -24,13 +25,17 @@ interface Evidence {
 
 export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId, playerName, lang, t, config }) => {
   const [evidenceList, setEvidenceList] = useState<Evidence[]>([]);
-  const [testimony, setTestimony] = useState('');
+  const [assignedQuestions, setAssignedQuestions] = useState<{kz: string; ru: string}[]>([]);
+  const [answers, setAnswers] = useState<string[]>(['', '', '', '', '']);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const shuffled = [...QUESTIONS].sort(() => 0.5 - Math.random());
+    setAssignedQuestions(shuffled.slice(0, 5));
+
     const q = collection(db, 'evidence');
     const unsub = onSnapshot(q, (snapshot) => {
       const data: Evidence[] = [];
@@ -101,18 +106,30 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
   };
 
   const handleSubmit = async () => {
-    if ((!testimony.trim() && !fileBase64) || isSubmitting) return;
+    const hasAnyAnswer = answers.some(a => a.trim().length > 0);
+    if ((!hasAnyAnswer && !fileBase64) || isSubmitting) return;
+
+    let testimonyText = '';
+    assignedQuestions.forEach((q, idx) => {
+      const ans = answers[idx].trim();
+      if (ans) {
+        testimonyText += `Q: ${q[lang]}\nA: ${ans}\n\n`;
+      }
+    });
+
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, 'evidence'), {
         playerId: guestId,
         playerName: playerName || (lang === 'kz' ? 'Аноним' : 'Аноним'),
-        testimony: testimony.trim(),
+        testimony: testimonyText.trim(),
         fileBase64,
         fileName,
         timestamp: serverTimestamp()
       });
-      setTestimony('');
+      const shuffled = [...QUESTIONS].sort(() => 0.5 - Math.random());
+      setAssignedQuestions(shuffled.slice(0, 5));
+      setAnswers(['', '', '', '', '']);
       setFileBase64(null);
       setFileName(null);
     } catch (e: any) {
@@ -171,13 +188,24 @@ export const EvidenceCollection: React.FC<EvidenceCollectionProps> = ({ guestId,
                   </motion.button>
                   <span className="text-[10px] text-[#AFAFAF] mt-1 font-bold">Max 1MB</span>
                 </div>
-                <textarea 
-                    value={testimony} 
-                    onChange={e => setTestimony(e.target.value)} 
-                    placeholder={lang === 'kz' ? 'Куәлігіңізді жазыңыз...' : 'Напишите свои показания...'}
-                    className="flex-1 bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl p-4 text-[#3C3C3C] dark:text-[#E5E5E5] outline-none focus:border-[#1CB0F6] resize-none h-16 font-bold custom-scrollbar placeholder:text-[#AFAFAF]"
-                />
-                <motion.button disabled={(!testimony.trim() && !fileBase64) || isSubmitting} whileTap={{ y: 2 }} onClick={handleSubmit} className="p-4 rounded-2xl bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] border-b-4 disabled:opacity-50 transition-all text-white flex items-center justify-center">
+                <div className="flex-1 flex flex-col gap-3 max-h-60 overflow-y-auto custom-scrollbar p-1">
+                  {assignedQuestions.map((q, i) => (
+                    <div key={i} className="flex flex-col gap-1 w-full flex-shrink-0">
+                      <label className="text-xs font-black text-[#AFAFAF] dark:text-[#8C8F9F] ml-2 leading-tight">{i + 1}. {q[lang]}</label>
+                      <textarea
+                        value={answers[i]}
+                        onChange={(e) => {
+                          const newAns = [...answers];
+                          newAns[i] = e.target.value;
+                          setAnswers(newAns);
+                        }}
+                        placeholder={lang === 'kz' ? 'Жауабыңыз...' : 'Ваш ответ...'}
+                        className="w-full bg-[#F7F9FC] dark:bg-[#181920] border-2 border-[#E5E5E5] dark:border-[#393A4B] rounded-2xl p-3 text-[#3C3C3C] dark:text-[#E5E5E5] outline-none focus:border-[#1CB0F6] resize-none h-16 font-bold text-sm placeholder:text-[#AFAFAF] custom-scrollbar"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <motion.button disabled={(!answers.some(a => a.trim().length > 0) && !fileBase64) || isSubmitting} whileTap={{ y: 2 }} onClick={handleSubmit} className="p-4 h-max rounded-2xl bg-[#58CC02] hover:bg-[#46A302] border-[#58CC02] hover:border-[#46A302] border-b-4 disabled:opacity-50 transition-all text-white flex items-center justify-center">
                     <Send size={24} />
                 </motion.button>
             </div>
